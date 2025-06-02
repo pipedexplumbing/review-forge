@@ -3,16 +3,19 @@
 /**
  * @fileOverview AI Tool for fetching basic product information from an Amazon product link.
  *
- * - fetchAmazonProductInfoTool - An AI tool that attempts to extract product name, description, and image URL.
+ * - fetchAmazonProductInfoTool - An AI tool that attempts to extract product name, description, and image URL
+ *   by fetching and parsing the Amazon product page.
  * - FetchAmazonProductInfoInput - Input schema for the tool (Amazon product URL).
  * - FetchAmazonProductInfoOutput - Output schema for the tool (product name, description, image URL).
  *
- * IMPORTANT: This tool uses a MOCK implementation for fetching data due to the complexities
- * and restrictions of web scraping. It does not perform live scraping of Amazon.
+ * IMPORTANT: This tool performs live web scraping of Amazon product pages. This can be unreliable due
+ * to frequent site structure changes and anti-scraping measures. For production, a dedicated API
+ * (e.g., Amazon Product Advertising API) or a robust third-party scraping service is recommended.
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import * as cheerio from 'cheerio';
 
 const FetchAmazonProductInfoInputSchema = z.object({
   productURL: z
@@ -31,81 +34,173 @@ const FetchAmazonProductInfoOutputSchema = z.object({
 });
 export type FetchAmazonProductInfoOutput = z.infer<typeof FetchAmazonProductInfoOutputSchema>;
 
+const DEFAULT_PRODUCT_NAME = 'Product (Details not fully fetched)';
+const DEFAULT_DESCRIPTION = 'Could not fetch detailed product description. Please refer to the Amazon page.';
+const PLACEHOLDER_IMAGE_BASE = 'https://placehold.co/300x200.png?text=';
+
+async function fetchPage(url: string) {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        // Using a common browser user-agent might help bypass some basic blocks
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+        // Add other headers if necessary, e.g., 'Accept-Encoding': 'gzip, deflate, br'
+      },
+      // Next.js fetch specific caching options can be managed here if needed
+      // cache: 'no-store', // Uncomment to ensure fresh data, but be mindful of rate limits
+    });
+    if (!response.ok) {
+      console.error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+      return null;
+    }
+    return await response.text();
+  } catch (error) {
+    console.error(`Error fetching ${url}:`, error);
+    return null;
+  }
+}
+
 export const fetchAmazonProductInfoTool = ai.defineTool(
   {
     name: 'fetchAmazonProductInfoTool',
     description:
-      'Fetches basic product information (name, description, image URL) from a given Amazon product page URL. Uses a mock implementation.',
+      'Fetches basic product information (name, description, image URL) by scraping a given Amazon product page URL. This is a best-effort attempt and may not always succeed.',
     inputSchema: FetchAmazonProductInfoInputSchema,
     outputSchema: FetchAmazonProductInfoOutputSchema,
   },
   async ({ productURL }): Promise<FetchAmazonProductInfoOutput> => {
-    // MOCK IMPLEMENTATION:
-    // In a real-world scenario, this would involve robust web scraping or using a dedicated API.
-    // Amazon has strong anti-scraping measures, making direct scraping unreliable and potentially problematic.
-    // This mock will return placeholder data or attempt a very naive extraction from the URL.
+    let productName = DEFAULT_PRODUCT_NAME;
+    let productDescription = DEFAULT_DESCRIPTION;
+    let productImageURL: string | undefined = `${PLACEHOLDER_IMAGE_BASE}Product`;
 
-    let productName = 'Amazing Product (Mock)';
-    let productDescription =
-      'This is a mock description. In a real app, this would be fetched from the Amazon page. This product likely has excellent features and benefits customers greatly.';
-    let productImageURL: string | undefined = `https://placehold.co/300x200.png?text=Mock+Product`;
-    
     try {
-      const url = new URL(productURL);
-      const pathParts = url.pathname.split('/');
-      
-      // Try to find ASIN or product title-like part in URL (common patterns /dp/ASIN or /product-name/dp/ASIN or /gp/product/ASIN)
-      let potentialName = '';
-      const dpIndex = pathParts.findIndex((part) => part === 'dp');
-      
-      if (dpIndex > 0 && pathParts.length -1 > dpIndex) { // Product name part is often before /dp/
-        // Check if the part before 'dp' seems like a product title (not a language code like 'en' or short string)
-        if (pathParts[dpIndex - 1] && pathParts[dpIndex - 1].length > 5 && !/^[a-z]{2}$/.test(pathParts[dpIndex - 1])) {
-            potentialName = pathParts[dpIndex - 1];
-        } else if (pathParts[dpIndex + 1] && pathParts[dpIndex + 1].length > 3) { // Or ASIN itself if no clear title part before.
-            potentialName = pathParts[dpIndex + 1]; // Fallback to using ASIN as part of name if no clear slug.
-        }
+      const html = await fetchPage(productURL);
+      if (!html) {
+        throw new Error('Failed to fetch page content.');
+      }
+
+      const $ = cheerio.load(html);
+
+      // 1. Extract Product Title
+      const titleElement = $('#productTitle');
+      if (titleElement.length > 0) {
+        productName = titleElement.text().trim();
       } else {
-         const productGpIndex = pathParts.findIndex((part) => part === 'product'); // Path like /gp/product/ASIN/ref...
-         if (productGpIndex !== -1 && pathParts.length > productGpIndex + 1 && pathParts[productGpIndex+1].length > 3) {
-            potentialName = pathParts[productGpIndex + 1]; // Often ASIN here, or sometimes a slug after gp/product/
-             // If there's another part after ASIN that looks like a name slug (before ref)
-            if (pathParts.length > productGpIndex + 2 && pathParts[productGpIndex + 2] !== 'ref' && pathParts[productGpIndex + 2].length > 5) {
-                potentialName = pathParts[productGpIndex + 2];
+         // Fallback: try to get from meta title
+        const metaTitle = $('head > title').text().trim();
+        if (metaTitle) {
+            // Often Amazon titles are like "Amazon.com: Actual Product Title"
+            const parts = metaTitle.split(':');
+            if (parts.length > 1) {
+                productName = parts.slice(1).join(':').trim();
+            } else {
+                productName = metaTitle;
             }
+        }
+      }
+      // Clean up product name further if it's still the default or very generic
+      if (productName === DEFAULT_PRODUCT_NAME || productName.toLowerCase().startsWith("amazon.com")) {
+         // Try to parse from URL as a last resort if title scraping failed
+        try {
+            const urlObj = new URL(productURL);
+            const pathParts = urlObj.pathname.split('/');
+            const dpIndex = pathParts.findIndex(part => part === 'dp');
+            if (dpIndex > 0 && pathParts[dpIndex -1] && pathParts[dpIndex -1].length > 5) {
+                const potentialName = decodeURIComponent(pathParts[dpIndex - 1].replace(/-/g, ' '));
+                 productName = potentialName.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.substring(1)).join(' ');
+            }
+        } catch (e) { /* ignore URL parsing error for name */ }
+      }
+
+
+      // 2. Extract Product Image URL
+      // Common selectors for main product image. Order matters.
+      const imageSelectors = [
+        '#landingImage', // Primary image
+        '#imgBlkFront', // Another common ID
+        '#ebooksImgBlkFront', // For Kindle ebooks
+        '#main-image-container img',
+        '#imgTagWrapperId img',
+      ];
+      for (const selector of imageSelectors) {
+        const imgElement = $(selector);
+        if (imgElement.length > 0) {
+          let src = imgElement.attr('src');
+          if (!src) src = imgElement.attr('data-old-hires'); // High-res version often here
+          if (!src) src = imgElement.attr('data-src'); // Sometimes in data-src
+          if (src && (src.startsWith('http') || src.startsWith('//'))) {
+            productImageURL = src.startsWith('//') ? `https:${src}` : src;
+            break; 
+          }
+        }
+      }
+      // Fallback for image if still not found
+      if (!productImageURL || productImageURL.includes('placehold.co')) {
+         const openGraphImage = $('meta[property="og:image"]').attr('content');
+         if (openGraphImage) {
+            productImageURL = openGraphImage;
+         } else {
+             productImageURL = `${PLACEHOLDER_IMAGE_BASE}${encodeURIComponent(productName.substring(0,20))}`;
          }
       }
 
-      if (potentialName && potentialName.length > 3 && potentialName !== 'dp' && potentialName !== 'product') { 
-        // Basic check to avoid using 'dp' or 'product' as name
-        productName = decodeURIComponent(potentialName.replace(/-/g, ' ')).substring(0, 70); // Decode, replace hyphens, limit length
-        // Capitalize first letter of each word
-        productName = productName.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.substring(1)).join(' ');
+
+      // 3. Extract Product Description (brief)
+      // Attempt 1: Meta description
+      let description = $('meta[name="description"]').attr('content');
+      if (description) {
+        productDescription = description.trim();
       } else {
-        // Fallback if no suitable name part is found
-        const asinMatch = productURL.match(/\/([A-Z0-9]{10})(\/|\?|$)/);
-        if (asinMatch && asinMatch[1]) {
-            productName = `Product ASIN ${asinMatch[1]} (Mock)`;
+        // Attempt 2: Feature bullets (first few)
+        const featureBullets: string[] = [];
+        $('#feature-bullets .a-list-item').each((i, el) => {
+          if (i < 3) { // Take up to 3 bullet points
+            featureBullets.push($(el).text().trim());
+          }
+        });
+        if (featureBullets.length > 0) {
+          productDescription = featureBullets.join(' ');
         } else {
-            productName = "Fetched Product (Mock Data)";
+            // Attempt 3: Book description if it's a book
+            const bookDesc = $('#bookDescription_feature_div noscript').html(); // Often in noscript for books
+            if (bookDesc) {
+                const cleanBookDesc = cheerio.load(bookDesc)('div').text().replace(/\s+/g, ' ').trim();
+                productDescription = cleanBookDesc.substring(0, 300) + (cleanBookDesc.length > 300 ? '...' : '');
+            } else {
+                 productDescription = `(No detailed description scraped) Check the product page for more information about ${productName}.`;
+            }
         }
       }
-      
-      productImageURL = `https://placehold.co/300x200.png?text=${encodeURIComponent(productName.substring(0,20))}`;
-      productDescription = `(Mock Data) This fantastic product, '${productName}', found at the provided link, offers a range of useful features. It's designed for durability and user satisfaction.`;
+      // Limit description length
+      if (productDescription.length > 500) {
+          productDescription = productDescription.substring(0, 497) + "...";
+      }
+
 
     } catch (e) {
-      console.warn('Error parsing URL for mock product name:', e);
-      // Fallback to generic mock names if URL parsing fails
-       productName = 'General Product (Mock)';
-       productDescription = 'This is a generally described product (mock data) based on the provided link. It is expected to meet customer needs effectively.';
-       productImageURL = `https://placehold.co/300x200.png?text=Product`;
+      console.warn('Full scraping attempt failed, using fallback data:', e instanceof Error ? e.message : String(e));
+      // Ensure productName has a somewhat reasonable value if initial scraping failed badly
+      if (productName === DEFAULT_PRODUCT_NAME) {
+        try {
+            const url = new URL(productURL);
+            const pathParts = url.pathname.split('/');
+            const dpIndex = pathParts.findIndex((part) => part === 'dp');
+            if (dpIndex > 0 && pathParts[dpIndex - 1] && pathParts[dpIndex - 1].length > 3) {
+                 const potentialName = decodeURIComponent(pathParts[dpIndex - 1].replace(/-/g, ' '));
+                 productName = potentialName.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.substring(1)).join(' ');
+            }
+        } catch (urlParseError) { /* fallback to default name */ }
+      }
+      productImageURL = `${PLACEHOLDER_IMAGE_BASE}${encodeURIComponent(productName.substring(0,20))}`;
     }
 
     return {
-      productName,
-      productDescription,
-      productImageURL,
+      productName: productName || DEFAULT_PRODUCT_NAME,
+      productDescription: productDescription || DEFAULT_DESCRIPTION,
+      productImageURL: productImageURL || `${PLACEHOLDER_IMAGE_BASE}Product`,
     };
   }
 );
+
