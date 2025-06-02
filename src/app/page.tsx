@@ -25,6 +25,9 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
+// Define the placeholder URL used by the Apify tool for easier comparison
+const API_PLACEHOLDER_IMAGE_URL = 'https://placehold.co/80x80.png';
+
 export default function ReviewForgePage() {
   const [generatedReview, setGeneratedReview] = useState<string | null>(null);
   const [fetchedProductName, setFetchedProductName] = useState<string | null>(null);
@@ -34,6 +37,7 @@ export default function ReviewForgePage() {
   const [isCopied, setIsCopied] = useState(false);
   const { toast } = useToast();
   const [currentYear, setCurrentYear] = useState<number | null>(null);
+  const [imageHasError, setImageHasError] = useState(false);
 
   useEffect(() => {
     setCurrentYear(new Date().getFullYear());
@@ -54,6 +58,7 @@ export default function ReviewForgePage() {
     setGeneratedReview(null);
     setFetchedProductName(null);
     setFetchedProductImageURL(null);
+    setImageHasError(false); // Reset image error state for new submission
 
     const aiInput: ComposeReviewInput = {
       amazonLink: data.amazonLink,
@@ -221,37 +226,21 @@ export default function ReviewForgePage() {
             <CardContent className="p-6 md:p-8 space-y-4">
               {fetchedProductName && (
                 <div className="p-4 border rounded-lg flex items-center space-x-4 bg-card hover:border-primary/50 transition-colors">
-                  {fetchedProductImageURL && (
+                  {(fetchedProductImageURL && fetchedProductImageURL !== API_PLACEHOLDER_IMAGE_URL && !imageHasError) ? (
                     <Image
+                      key={fetchedProductImageURL} // Add key to help React diffing if URL changes
                       src={fetchedProductImageURL}
                       alt={fetchedProductName || "Product Image"}
                       width={80}
                       height={80}
                       className="rounded-md object-cover"
                       data-ai-hint="product photo"
-                      onError={(e) => {
-                        const target = e.currentTarget;
-                        target.onerror = null; 
-                        target.src = 'https://placehold.co/80x80.png'; 
-                        target.alt = 'Placeholder Image';
-                        const parent = target.parentElement;
-                        if (parent && parent.querySelector('.product-image-placeholder-text')) {
-                          (parent.querySelector('.product-image-placeholder-text') as HTMLElement).style.display = 'flex';
-                          target.style.display = 'none';
-                        } else if (parent && !parent.querySelector('.product-image-placeholder-text')) {
-                           const placeholderTextDiv = document.createElement('div');
-                           placeholderTextDiv.className = 'w-[80px] h-[80px] bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground product-image-placeholder-text';
-                           placeholderTextDiv.textContent = 'No Image';
-                           parent.insertBefore(placeholderTextDiv, target);
-                           target.style.display = 'none';
-                        }
-                       }}
+                      onError={() => {
+                        setImageHasError(true);
+                      }}
                     />
-                  )}
-                   {/* Fallback div for when image fails and JS creates it, or when no image URL initially */}
-                  {(!fetchedProductImageURL || (fetchedProductImageURL && fetchedProductImageURL.includes('placehold.co'))) && (
-                    <div className="w-[80px] h-[80px] bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground product-image-placeholder-text"
-                         style={{ display: fetchedProductImageURL && !fetchedProductImageURL.includes('placehold.co') ? 'none' : 'flex' }}>
+                  ) : (
+                    <div className="w-[80px] h-[80px] bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground product-image-placeholder-text">
                       No Image
                     </div>
                   )}
