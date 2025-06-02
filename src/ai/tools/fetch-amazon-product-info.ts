@@ -153,17 +153,19 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       }
       
       let extractedImageURL: string | undefined = undefined;
+      // Comprehensive list of potential image field locations
       if (productData?.mainImage?.link) {
         extractedImageURL = productData.mainImage.link;
       } else if (productData?.mainImage?.url) {
         extractedImageURL = productData.mainImage.url;
       } else if (Array.isArray(productData?.images) && productData.images.length > 0) {
-        if (typeof productData.images[0]?.link === 'string') {
-          extractedImageURL = productData.images[0].link;
-        } else if (typeof productData.images[0]?.url === 'string') {
-          extractedImageURL = productData.images[0].url;
-        } else if (typeof productData.images[0] === 'string') {
-          extractedImageURL = productData.images[0];
+        const firstImage = productData.images[0];
+        if (typeof firstImage?.link === 'string') {
+          extractedImageURL = firstImage.link;
+        } else if (typeof firstImage?.url === 'string') {
+          extractedImageURL = firstImage.url;
+        } else if (typeof firstImage === 'string') {
+          extractedImageURL = firstImage;
         }
       } else if (typeof productData?.imageUrl === 'string') {
         extractedImageURL = productData.imageUrl;
@@ -179,15 +181,27 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
          extractedImageURL = productData.picture;
       } else if (Array.isArray(productData?.media?.images) && productData.media.images.length > 0 && productData.media.images[0]?.url) {
         extractedImageURL = productData.media.images[0].url;
+      } 
+      // Adding checks for OpenGraph style image fields
+      else if (typeof productData?.ogImage === 'string') {
+        extractedImageURL = productData.ogImage;
+      } else if (typeof productData?.['og:image'] === 'string') { // Checking for 'og:image' literally
+        extractedImageURL = productData['og:image'];
+      } else if (typeof productData?.openGraph?.image?.url === 'string') {
+        extractedImageURL = productData.openGraph.image.url;
+      } else if (typeof productData?.openGraph?.image === 'string') {
+        extractedImageURL = productData.openGraph.image;
+      } else if (typeof productData?.meta?.ogImage === 'string') {
+        extractedImageURL = productData.meta.ogImage;
       }
 
 
-      if (!extractedImageURL) {
+      if (!extractedImageURL && productData) {
         console.warn(`Could not find product image URL in Apify response for ASIN ${asin}. Available keys in productData:`, Object.keys(productData).join(', '));
       }
       
       const finalProductName = (typeof productName === 'string' ? productName.trim() : DEFAULT_PRODUCT_NAME).substring(0,150);
-      const finalProductDescription = (typeof productDescription === 'string' ? productDescription.trim() : DEFAULT_DESCRIPTION).substring(0,1000); // Increased limit for description
+      const finalProductDescription = (typeof productDescription === 'string' ? productDescription.trim() : DEFAULT_DESCRIPTION).substring(0,1000);
       
       let finalProductImageURL = PLACEHOLDER_IMAGE_URL;
       if (extractedImageURL) {
