@@ -18,19 +18,17 @@ import { composeReview, type ComposeReviewInput, type ComposeReviewOutput } from
 import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, VenetianMask } from 'lucide-react';
 
 const formSchema = z.object({
-  starRating: z.number().min(0, "Rating must be 0 or more stars.").max(5).optional(),
+  amazonLink: z.string().url("Please enter a valid Amazon product link."),
+  starRating: z.number().min(0).max(5).optional(),
   feedbackText: z.string().optional(),
-  amazonLink: z.string().url("Please enter a valid Amazon product link.").optional().or(z.literal('')),
-  productName: z.string().optional(),
-  productImageURL: z.string().url("Please enter a valid image URL.").optional().or(z.literal('')),
-  productDetails: z.string().optional(),
-  existingReviews: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
 
 export default function ReviewForgePage() {
   const [generatedReview, setGeneratedReview] = useState<string | null>(null);
+  const [fetchedProductName, setFetchedProductName] = useState<string | null>(null);
+  const [fetchedProductImageURL, setFetchedProductImageURL] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
@@ -39,34 +37,34 @@ export default function ReviewForgePage() {
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      amazonLink: "",
       starRating: 0,
       feedbackText: "",
-      amazonLink: "",
-      productName: "",
-      productImageURL: "",
-      productDetails: "",
-      existingReviews: "",
     },
   });
-
-  const productImage = form.watch("productImageURL");
-  const productName = form.watch("productName");
 
   const onSubmit: SubmitHandler<FormData> = async (data) => {
     setIsLoading(true);
     setError(null);
     setGeneratedReview(null);
+    setFetchedProductName(null);
+    setFetchedProductImageURL(null);
 
     const aiInput: ComposeReviewInput = {
+      amazonLink: data.amazonLink,
       starRating: data.starRating === 0 ? undefined : data.starRating,
       feedbackText: data.feedbackText,
-      productDetails: data.productDetails,
-      existingReviews: data.existingReviews,
     };
 
     try {
       const result: ComposeReviewOutput = await composeReview(aiInput);
       setGeneratedReview(result.reviewText);
+      if (result.fetchedProductName) {
+        setFetchedProductName(result.fetchedProductName);
+      }
+      if (result.fetchedProductImageURL) {
+        setFetchedProductImageURL(result.fetchedProductImageURL);
+      }
       toast({
         title: "Review Forged!",
         description: "Your AI-crafted review is ready.",
@@ -115,7 +113,7 @@ export default function ReviewForgePage() {
           Review Forge
         </h1>
         <p className="font-body text-muted-foreground mt-3 text-lg md:text-xl max-w-2xl mx-auto">
-          Transform your thoughts into polished Amazon reviews with the power of AI. Just provide a few details, and let us craft the perfect write-up.
+          Transform your thoughts into polished Amazon reviews with the power of AI. Just provide an Amazon link and optionally your rating and feedback.
         </p>
       </header>
 
@@ -131,73 +129,28 @@ export default function ReviewForgePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6 md:p-8">
-            {productName && productImage && (
-              <div className="mb-6 p-4 border rounded-lg flex items-center space-x-4 bg-card hover:border-primary/50 transition-colors">
-                <Image
-                  src={productImage}
-                  alt={productName || "Product Image"}
-                  width={80}
-                  height={80}
-                  className="rounded-md object-cover"
-                  data-ai-hint="product photo"
-                  onError={(e) => (e.currentTarget.src = 'https://placehold.co/80x80.png')}
-                />
-                <div>
-                  <h3 className="font-headline text-xl font-semibold text-foreground">{productName}</h3>
-                  {form.getValues("amazonLink") && <a href={form.getValues("amazonLink")} target="_blank" rel="noopener noreferrer" className="text-sm text-accent hover:underline flex items-center"><LinkIcon size={14} className="mr-1"/>View on Amazon</a>}
-                </div>
-              </div>
-            )}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <FormField
                   control={form.control}
-                  name="productName"
+                  name="amazonLink"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-headline text-lg">Product Name</FormLabel>
+                      <FormLabel className="font-headline text-lg">Amazon Product Link</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g., SuperWidget ProMax" {...field} className="text-base" disabled={isLoading} />
+                        <Input type="url" placeholder="https://amazon.com/dp/..." {...field} className="text-base" disabled={isLoading}/>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <FormField
-                      control={form.control}
-                      name="amazonLink"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-headline text-lg">Amazon Product Link (Optional)</FormLabel>
-                          <FormControl>
-                            <Input type="url" placeholder="https://amazon.com/dp/..." {...field} className="text-base" disabled={isLoading}/>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="productImageURL"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-headline text-lg">Product Image URL (Optional)</FormLabel>
-                          <FormControl>
-                            <Input type="url" placeholder="https://images.amazon.com/..." {...field} className="text-base" disabled={isLoading}/>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
 
                 <FormField
                   control={form.control}
                   name="starRating"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-headline text-lg">Your Rating</FormLabel>
+                      <FormLabel className="font-headline text-lg">Your Rating (Optional)</FormLabel>
                       <FormControl>
                         <StarRatingInput value={field.value || 0} onChange={field.onChange} disabled={isLoading} />
                       </FormControl>
@@ -210,50 +163,12 @@ export default function ReviewForgePage() {
                   name="feedbackText"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-headline text-lg">Your Key Feedback</FormLabel>
+                      <FormLabel className="font-headline text-lg">Your Key Feedback (Optional)</FormLabel>
                       <FormControl>
                         <Textarea
                           placeholder="What did you like or dislike? e.g., 'Loved the battery life, but it's a bit bulky.'"
                           {...field}
                           rows={4}
-                          className="text-base resize-none"
-                          disabled={isLoading}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="productDetails"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-headline text-lg">Product Details / Description</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Paste product description or key features here. e.g., '10-inch HD display, 128GB storage, lightweight design.'"
-                          {...field}
-                          rows={5}
-                          className="text-base resize-none"
-                          disabled={isLoading}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="existingReviews"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-headline text-lg">Snippets from Existing Reviews (Optional)</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Optionally, paste some themes or snippets from other reviews. e.g., 'Many users mentioned its ease of use. Some found the setup tricky.'"
-                          {...field}
-                          rows={5}
                           className="text-base resize-none"
                           disabled={isLoading}
                         />
@@ -290,25 +205,54 @@ export default function ReviewForgePage() {
             </CardContent>
           </Card>
         )}
-
-        {generatedReview && (
+        
+        {(generatedReview || fetchedProductName || fetchedProductImageURL) && (
           <Card className="shadow-2xl rounded-xl overflow-hidden animate-in fade-in-50 duration-500">
             <CardHeader className="bg-gradient-to-br from-accent/70 to-primary/80 p-6">
               <CardTitle className="font-headline text-3xl text-primary-foreground flex items-center">
                 <VenetianMask className="mr-3 h-7 w-7" /> Your Forged Review
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-6 md:p-8">
-              <div className="prose prose-lg font-body max-w-none text-foreground whitespace-pre-wrap bg-background/50 p-4 rounded-md border border-border">
-                {generatedReview}
-              </div>
+            <CardContent className="p-6 md:p-8 space-y-4">
+              {fetchedProductName && (
+                <div className="p-4 border rounded-lg flex items-center space-x-4 bg-card hover:border-primary/50 transition-colors">
+                  {fetchedProductImageURL && (
+                    <Image
+                      src={fetchedProductImageURL}
+                      alt={fetchedProductName || "Product Image"}
+                      width={80}
+                      height={80}
+                      className="rounded-md object-cover"
+                      data-ai-hint="product photo"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none'; 
+                        const placeholder = document.createElement('div');
+                        placeholder.className = 'w-[80px] h-[80px] bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground';
+                        placeholder.textContent = 'No Image';
+                        e.currentTarget.parentElement?.insertBefore(placeholder, e.currentTarget);
+                       }}
+                    />
+                  )}
+                  <div>
+                    <h3 className="font-headline text-xl font-semibold text-foreground">{fetchedProductName}</h3>
+                    {form.getValues("amazonLink") && <a href={form.getValues("amazonLink")} target="_blank" rel="noopener noreferrer" className="text-sm text-accent hover:underline flex items-center"><LinkIcon size={14} className="mr-1"/>View on Amazon</a>}
+                  </div>
+                </div>
+              )}
+              {generatedReview && (
+                <div className="prose prose-lg font-body max-w-none text-foreground whitespace-pre-wrap bg-background/50 p-4 rounded-md border border-border">
+                  {generatedReview}
+                </div>
+              )}
             </CardContent>
-            <CardFooter className="p-6 border-t">
-              <Button onClick={handleCopyReview} variant="outline" className="w-full text-lg py-6 font-headline transition-transform hover:scale-105" size="lg">
-                {isCopied ? <Check className="mr-2 h-5 w-5 text-green-500" /> : <Copy className="mr-2 h-5 w-5" />}
-                {isCopied ? 'Copied!' : 'Copy Review Text'}
-              </Button>
-            </CardFooter>
+            {generatedReview && (
+              <CardFooter className="p-6 border-t">
+                <Button onClick={handleCopyReview} variant="outline" className="w-full text-lg py-6 font-headline transition-transform hover:scale-105" size="lg">
+                  {isCopied ? <Check className="mr-2 h-5 w-5 text-green-500" /> : <Copy className="mr-2 h-5 w-5" />}
+                  {isCopied ? 'Copied!' : 'Copy Review Text'}
+                </Button>
+              </CardFooter>
+            )}
           </Card>
         )}
       </div>
@@ -320,3 +264,5 @@ export default function ReviewForgePage() {
     </div>
   );
 }
+
+    
