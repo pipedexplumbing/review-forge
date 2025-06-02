@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import StarRatingInput from '@/components/ui/star-rating-input';
 import { useToast } from '@/hooks/use-toast';
 import { composeReview, type ComposeReviewInput, type ComposeReviewOutput } from '@/ai/flows/compose-review';
-import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, VenetianMask } from 'lucide-react';
+import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, PencilRuler } from 'lucide-react';
 
 const formSchema = z.object({
   amazonLink: z.string().url("Please enter a valid Amazon product link."),
@@ -112,7 +112,7 @@ export default function ReviewForgePage() {
     <div className="min-h-screen bg-background flex flex-col items-center py-8 px-4 transition-colors duration-300">
       <header className="mb-10 text-center">
         <div className="inline-flex items-center justify-center p-3 bg-primary text-primary-foreground rounded-full mb-4 shadow-lg">
-           <VenetianMask size={48} />
+           <PencilRuler size={48} />
         </div>
         <h1 className="font-headline text-5xl md:text-6xl font-bold text-primary tracking-tight">
           Review Forge
@@ -123,8 +123,8 @@ export default function ReviewForgePage() {
       </header>
 
       <div className="w-full max-w-3xl space-y-8">
-        <Card className="shadow-2xl rounded-xl overflow-hidden transition-all hover:shadow-primary/20 hover:shadow-xl">
-          <CardHeader className="bg-gradient-to-br from-primary/80 to-accent/70 p-6">
+        <Card className="shadow-xl rounded-lg overflow-hidden transition-all hover:shadow-primary/20">
+          <CardHeader className="bg-primary/90 p-6">
             <CardTitle className="font-headline text-3xl text-primary-foreground flex items-center">
               <Sparkles className="mr-3 h-7 w-7" />
               Craft Your Review
@@ -141,7 +141,7 @@ export default function ReviewForgePage() {
                   name="amazonLink"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-headline text-lg">Amazon Product Link</FormLabel>
+                      <FormLabel className="font-headline text-lg text-foreground">Amazon Product Link</FormLabel>
                       <FormControl>
                         <Input type="url" placeholder="https://amazon.com/dp/..." {...field} className="text-base" disabled={isLoading}/>
                       </FormControl>
@@ -155,7 +155,7 @@ export default function ReviewForgePage() {
                   name="starRating"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-headline text-lg">Your Rating (Optional)</FormLabel>
+                      <FormLabel className="font-headline text-lg text-foreground">Your Rating (Optional)</FormLabel>
                       <FormControl>
                         <StarRatingInput value={field.value || 0} onChange={field.onChange} disabled={isLoading} />
                       </FormControl>
@@ -168,7 +168,7 @@ export default function ReviewForgePage() {
                   name="feedbackText"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-headline text-lg">Your Key Feedback (Optional)</FormLabel>
+                      <FormLabel className="font-headline text-lg text-foreground">Your Key Feedback (Optional)</FormLabel>
                       <FormControl>
                         <Textarea
                           placeholder="What did you like or dislike? e.g., 'Loved the battery life, but it's a bit bulky.'"
@@ -201,7 +201,7 @@ export default function ReviewForgePage() {
         </Card>
 
         {error && (
-          <Card className="bg-destructive/10 border-destructive text-destructive shadow-lg rounded-xl">
+          <Card className="bg-destructive/10 border-destructive text-destructive shadow-lg rounded-lg">
             <CardHeader>
               <CardTitle className="font-headline text-xl">Error</CardTitle>
             </CardHeader>
@@ -212,10 +212,10 @@ export default function ReviewForgePage() {
         )}
         
         {(generatedReview || fetchedProductName || fetchedProductImageURL) && !isLoading && (
-          <Card className="shadow-2xl rounded-xl overflow-hidden animate-in fade-in-50 duration-500">
-            <CardHeader className="bg-gradient-to-br from-accent/70 to-primary/80 p-6">
+          <Card className="shadow-xl rounded-lg overflow-hidden animate-in fade-in-50 duration-500">
+            <CardHeader className="bg-primary/90 p-6">
               <CardTitle className="font-headline text-3xl text-primary-foreground flex items-center">
-                <VenetianMask className="mr-3 h-7 w-7" /> Your Forged Review
+                <PencilRuler className="mr-3 h-7 w-7" /> Your Forged Review
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6 md:p-8 space-y-4">
