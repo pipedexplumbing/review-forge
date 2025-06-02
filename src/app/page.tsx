@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState } from 'react';
@@ -14,16 +15,16 @@ import { Textarea } from '@/components/ui/textarea';
 import StarRatingInput from '@/components/ui/star-rating-input';
 import { useToast } from '@/hooks/use-toast';
 import { composeReview, type ComposeReviewInput, type ComposeReviewOutput } from '@/ai/flows/compose-review';
-import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, Image as ImageIcon, VenetianMask } from 'lucide-react';
+import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, VenetianMask } from 'lucide-react';
 
 const formSchema = z.object({
-  starRating: z.number().min(1, "Star rating is required.").max(5),
-  feedbackText: z.string().min(10, "Please provide some feedback (at least 10 characters)."),
+  starRating: z.number().min(0, "Rating must be 0 or more stars.").max(5).optional(),
+  feedbackText: z.string().optional(),
   amazonLink: z.string().url("Please enter a valid Amazon product link.").optional().or(z.literal('')),
-  productName: z.string().min(1, "Product name is required."),
+  productName: z.string().optional(),
   productImageURL: z.string().url("Please enter a valid image URL.").optional().or(z.literal('')),
-  productDetails: z.string().min(20, "Product details should be at least 20 characters."),
-  existingReviews: z.string().min(20, "Existing reviews snippets should be at least 20 characters."),
+  productDetails: z.string().optional(),
+  existingReviews: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -57,9 +58,9 @@ export default function ReviewForgePage() {
     setGeneratedReview(null);
 
     const aiInput: ComposeReviewInput = {
-      starRating: data.starRating,
+      starRating: data.starRating === 0 ? undefined : data.starRating,
       feedbackText: data.feedbackText,
-      productDetails: data.productDetails, // This should ideally contain name, description etc.
+      productDetails: data.productDetails,
       existingReviews: data.existingReviews,
     };
 
@@ -139,7 +140,7 @@ export default function ReviewForgePage() {
                   height={80}
                   className="rounded-md object-cover"
                   data-ai-hint="product photo"
-                  onError={(e) => (e.currentTarget.src = 'https://placehold.co/80x80.png')} // Fallback for broken image links
+                  onError={(e) => (e.currentTarget.src = 'https://placehold.co/80x80.png')}
                 />
                 <div>
                   <h3 className="font-headline text-xl font-semibold text-foreground">{productName}</h3>
@@ -168,7 +169,7 @@ export default function ReviewForgePage() {
                       name="amazonLink"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="font-headline text-lg">Amazon Product Link</FormLabel>
+                          <FormLabel className="font-headline text-lg">Amazon Product Link (Optional)</FormLabel>
                           <FormControl>
                             <Input type="url" placeholder="https://amazon.com/dp/..." {...field} className="text-base" disabled={isLoading}/>
                           </FormControl>
@@ -181,7 +182,7 @@ export default function ReviewForgePage() {
                       name="productImageURL"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="font-headline text-lg">Product Image URL</FormLabel>
+                          <FormLabel className="font-headline text-lg">Product Image URL (Optional)</FormLabel>
                           <FormControl>
                             <Input type="url" placeholder="https://images.amazon.com/..." {...field} className="text-base" disabled={isLoading}/>
                           </FormControl>
@@ -198,7 +199,7 @@ export default function ReviewForgePage() {
                     <FormItem>
                       <FormLabel className="font-headline text-lg">Your Rating</FormLabel>
                       <FormControl>
-                        <StarRatingInput value={field.value} onChange={field.onChange} disabled={isLoading} />
+                        <StarRatingInput value={field.value || 0} onChange={field.onChange} disabled={isLoading} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

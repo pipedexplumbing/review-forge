@@ -1,3 +1,4 @@
+
 // src/ai/flows/compose-review.ts
 'use server';
 
@@ -13,10 +14,10 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const ComposeReviewInputSchema = z.object({
-  starRating: z.number().min(1).max(5).describe('The star rating given by the user (1-5).'),
-  feedbackText: z.string().describe('The user feedback text about the product.'),
-  productDetails: z.string().describe('Product details scraped from the Amazon link.'),
-  existingReviews: z.string().describe('Existing customer reviews scraped from the Amazon link.'),
+  starRating: z.number().min(1).max(5).optional().describe('The star rating given by the user (1-5), if provided.'),
+  feedbackText: z.string().optional().describe('The user feedback text about the product, if provided.'),
+  productDetails: z.string().optional().describe('Product details, if provided.'),
+  existingReviews: z.string().optional().describe('Existing customer reviews, if provided.'),
 });
 
 export type ComposeReviewInput = z.infer<typeof ComposeReviewInputSchema>;
@@ -41,12 +42,13 @@ const composeReviewPrompt = ai.definePrompt({
   },
   prompt: `You are an expert product reviewer. Compose a compelling and helpful product review based on the following information:
 
-Star Rating: {{{starRating}}}
-User Feedback: {{{feedbackText}}}
-Product Details: {{{productDetails}}}
-Existing Reviews: {{{existingReviews}}}
+{{#if starRating}}Star Rating: {{{starRating}}}{{/if}}
+{{#if feedbackText}}User Feedback: {{{feedbackText}}}{{/if}}
+{{#if productDetails}}Product Details: {{{productDetails}}}{{/if}}
+{{#if existingReviews}}Existing Reviews: {{{existingReviews}}}{{/if}}
 
 Compose the review in varied writing styles, optionally using a pros/cons structure. Incorporate snippets from existing customer reviews where appropriate. The review should be well-formatted and ready for submission.
+If minimal information is provided, create a general positive review.
 `,
 });
 
