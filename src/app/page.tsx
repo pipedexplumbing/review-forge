@@ -241,10 +241,10 @@ export default function ReviewForgePage() {
                     />
                   ) : (
                     <div 
-                      className="w-[80px] h-[80px] bg-muted rounded-md flex items-center justify-center text-center text-xs text-muted-foreground p-1"
+                      className="w-[80px] h-[80px] bg-muted rounded-md flex items-center justify-center text-center text-xs text-muted-foreground p-2"
                       data-ai-hint="product placeholder"
                     >
-                      No Image
+                      No Image Available
                     </div>
                   )}
                   <div>
@@ -272,9 +272,10 @@ export default function ReviewForgePage() {
       </div>
       <footer className="mt-12 text-center">
         <p className="text-sm text-muted-foreground font-body">
-          &copy; {currentYear || new Date().getFullYear()} Review Forge. AI-powered review assistance.
+          &copy; {currentYear || ''} Review Forge. AI-powered review assistance.
         </p>
       </footer>
     </div>
   );
 }
+
