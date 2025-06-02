@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, FormEvent } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,17 +14,30 @@ import { Textarea } from '@/components/ui/textarea';
 import StarRatingInput from '@/components/ui/star-rating-input';
 import { useToast } from '@/hooks/use-toast';
 import { composeReview, type ComposeReviewInput, type ComposeReviewOutput } from '@/ai/flows/compose-review';
-import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, PencilRuler } from 'lucide-react';
+import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, PencilRuler, LogOut, KeyRound } from 'lucide-react';
 
-const formSchema = z.object({
+// --- Authentication Constants ---
+const HARDCODED_PASSWORD = "amazon";
+const LOCAL_STORAGE_AUTH_KEY = "reviewForgeAuth";
+const AUTH_EXPIRY_DAYS = 14;
+// --- End Authentication Constants ---
+
+const reviewFormSchema = z.object({
   amazonLink: z.string().url("Please enter a valid Amazon product link."),
   starRating: z.number().min(0).max(5).optional(),
   feedbackText: z.string().optional(),
 });
 
-type FormData = z.infer<typeof formSchema>;
+type ReviewFormData = z.infer<typeof reviewFormSchema>;
 
 export default function ReviewForgePage() {
+  // --- Authentication State ---
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
+  // --- End Authentication State ---
+
+  // --- App Specific State (Review Forge) ---
   const [generatedReview, setGeneratedReview] = useState<string | null>(null);
   const [fetchedProductName, setFetchedProductName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -32,13 +45,66 @@ export default function ReviewForgePage() {
   const [isCopied, setIsCopied] = useState(false);
   const { toast, dismiss: dismissToast } = useToast();
   const [currentYear, setCurrentYear] = useState<number | null>(null);
+  // --- End App Specific State ---
 
   useEffect(() => {
     setCurrentYear(new Date().getFullYear());
   }, []);
 
-  const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
+  // --- Authentication Effects and Handlers ---
+  useEffect(() => {
+    // Check auth on mount
+    try {
+      const authDataString = localStorage.getItem(LOCAL_STORAGE_AUTH_KEY);
+      if (authDataString) {
+        const authData = JSON.parse(authDataString);
+        if (authData && authData.token === 'loggedIn' && authData.expiry && new Date().getTime() < authData.expiry) {
+          setIsAuthenticated(true);
+        } else {
+          localStorage.removeItem(LOCAL_STORAGE_AUTH_KEY); // Clear invalid/expired token
+        }
+      }
+    } catch (e) {
+      console.error("Error reading auth from localStorage", e);
+      localStorage.removeItem(LOCAL_STORAGE_AUTH_KEY);
+    }
+  }, []);
+
+  const handleLogin = (e?: FormEvent) => {
+    if (e) e.preventDefault();
+    if (passwordInput === HARDCODED_PASSWORD) {
+      const expiryTimestamp = new Date().getTime() + AUTH_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+      try {
+        localStorage.setItem(LOCAL_STORAGE_AUTH_KEY, JSON.stringify({ token: 'loggedIn', expiry: expiryTimestamp }));
+        setIsAuthenticated(true);
+        setLoginError(null);
+        setPasswordInput(""); 
+      } catch (err) {
+        console.error("Error saving auth to localStorage", err);
+        setLoginError("Could not save login session. Please try again.");
+      }
+    } else {
+      setLoginError("Incorrect password.");
+    }
+  };
+
+  const handleLogout = () => {
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_AUTH_KEY);
+    } catch (e) {
+      console.error("Error removing auth from localStorage", e);
+    }
+    setIsAuthenticated(false);
+    setGeneratedReview(null);
+    setFetchedProductName(null);
+    setError(null);
+    // Potentially reset other app states if needed
+  };
+  // --- End Authentication Effects and Handlers ---
+
+  // --- Review Forge Form and Logic ---
+  const reviewForm = useForm<ReviewFormData>({
+    resolver: zodResolver(reviewFormSchema),
     defaultValues: {
       amazonLink: "",
       starRating: 0,
@@ -46,7 +112,7 @@ export default function ReviewForgePage() {
     },
   });
 
-  const onSubmit: SubmitHandler<FormData> = async (data) => {
+  const onReviewSubmit: SubmitHandler<ReviewFormData> = async (data) => {
     setIsLoading(true);
     setError(null);
     setGeneratedReview(null);
@@ -92,7 +158,7 @@ export default function ReviewForgePage() {
           description: "Review copied to clipboard.",
         });
         setTimeout(() => {
-          if (toastId) {
+          if (toastId) { // Check if toastId is defined
             dismissToast(toastId);
           }
           setIsCopied(false);
@@ -107,9 +173,63 @@ export default function ReviewForgePage() {
       }
     }
   };
+  // --- End Review Forge Form and Logic ---
 
+  // --- Conditional Rendering: Login Page or App Page ---
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center py-8 px-4">
+        <Card className="w-full max-w-md shadow-xl rounded-lg">
+          <CardHeader className="text-center">
+            <div className="inline-flex items-center justify-center p-3 bg-primary text-primary-foreground rounded-full mb-4 shadow-lg mx-auto">
+              <PencilRuler size={36} />
+            </div>
+            <CardTitle className="font-headline text-3xl text-primary">Review Forge</CardTitle>
+            <CardDescription className="font-body text-muted-foreground pt-1">
+              Please login to continue.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleLogin} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Enter password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  className="text-base"
+                />
+              </div>
+              {loginError && <p className="text-sm text-destructive">{loginError}</p>}
+              <Button type="submit" className="w-full text-lg py-3 font-headline">
+                <KeyRound className="mr-2 h-5 w-5" />
+                Login
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+        <footer className="mt-12 text-center">
+          <p className="text-sm text-muted-foreground font-body">
+            &copy; {currentYear || ''} Review Forge.
+          </p>
+      </footer>
+      </div>
+    );
+  }
+
+  // --- Authenticated App View ---
   return (
     <div className="min-h-screen bg-background flex flex-col items-center py-8 px-4 transition-colors duration-300">
+      <div className="w-full max-w-3xl flex justify-between items-center mb-6">
+        <div></div> {/* Spacer */}
+        <Button onClick={handleLogout} variant="outline" size="sm" className="font-headline">
+          <LogOut className="mr-2 h-4 w-4" />
+          Logout
+        </Button>
+      </div>
+      
       <header className="mb-10 text-center">
         <div className="inline-flex items-center justify-center p-3 bg-primary text-primary-foreground rounded-full mb-4 shadow-lg">
            <PencilRuler size={48} />
@@ -134,10 +254,10 @@ export default function ReviewForgePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6 md:p-8">
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <Form {...reviewForm}>
+              <form onSubmit={reviewForm.handleSubmit(onReviewSubmit)} className="space-y-6">
                 <FormField
-                  control={form.control}
+                  control={reviewForm.control}
                   name="amazonLink"
                   render={({ field }) => (
                     <FormItem>
@@ -151,7 +271,7 @@ export default function ReviewForgePage() {
                 />
 
                 <FormField
-                  control={form.control}
+                  control={reviewForm.control}
                   name="starRating"
                   render={({ field }) => (
                     <FormItem>
@@ -164,7 +284,7 @@ export default function ReviewForgePage() {
                   )}
                 />
                 <FormField
-                  control={form.control}
+                  control={reviewForm.control}
                   name="feedbackText"
                   render={({ field }) => (
                     <FormItem>
@@ -220,11 +340,11 @@ export default function ReviewForgePage() {
             </CardHeader>
             <CardContent className="p-6 md:p-8 space-y-4">
               {fetchedProductName && (
-                <div className="p-4 border rounded-lg flex items-center space-x-4 bg-card hover:border-primary/50 transition-colors">
-                  <div>
-                    <h3 className="font-headline text-xl font-semibold text-foreground">{fetchedProductName}</h3>
-                    {form.getValues("amazonLink") && <a href={form.getValues("amazonLink")} target="_blank" rel="noopener noreferrer" className="text-sm text-accent hover:underline flex items-center"><LinkIcon size={14} className="mr-1"/>View on Amazon</a>}
-                  </div>
+                 <div className="p-4 border rounded-lg flex items-center space-x-4 bg-card hover:border-primary/50 transition-colors">
+                    <div>
+                        <h3 className="font-headline text-xl font-semibold text-foreground">{fetchedProductName}</h3>
+                        {reviewForm.getValues("amazonLink") && <a href={reviewForm.getValues("amazonLink")} target="_blank" rel="noopener noreferrer" className="text-sm text-accent hover:underline flex items-center"><LinkIcon size={14} className="mr-1"/>View on Amazon</a>}
+                    </div>
                 </div>
               )}
               {generatedReview && (
@@ -252,3 +372,5 @@ export default function ReviewForgePage() {
     </div>
   );
 }
+
+    
