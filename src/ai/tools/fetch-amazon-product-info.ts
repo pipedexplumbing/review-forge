@@ -58,22 +58,37 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       let potentialName = '';
       const dpIndex = pathParts.findIndex((part) => part === 'dp');
       
-      if (dpIndex > 0 && dpIndex < pathParts.length -1) { // ASIN is usually after /dp/
-        potentialName = pathParts[dpIndex - 1]; // Part before /dp/
-        if (potentialName.length < 5 && pathParts.length > dpIndex + 1) { // if part before dp is short (like language code) or not product-like
-            potentialName = pathParts[dpIndex + 1]; // Try ASIN as name part or look for title before /dp/
+      if (dpIndex > 0 && pathParts.length -1 > dpIndex) { // Product name part is often before /dp/
+        // Check if the part before 'dp' seems like a product title (not a language code like 'en' or short string)
+        if (pathParts[dpIndex - 1] && pathParts[dpIndex - 1].length > 5 && !/^[a-z]{2}$/.test(pathParts[dpIndex - 1])) {
+            potentialName = pathParts[dpIndex - 1];
+        } else if (pathParts[dpIndex + 1] && pathParts[dpIndex + 1].length > 3) { // Or ASIN itself if no clear title part before.
+            potentialName = pathParts[dpIndex + 1]; // Fallback to using ASIN as part of name if no clear slug.
         }
       } else {
-         const productGpIndex = pathParts.findIndex((part) => part === 'product');
-         if (productGpIndex !== -1 && pathParts.length > productGpIndex + 1) {
-            potentialName = pathParts[productGpIndex + 1];
+         const productGpIndex = pathParts.findIndex((part) => part === 'product'); // Path like /gp/product/ASIN/ref...
+         if (productGpIndex !== -1 && pathParts.length > productGpIndex + 1 && pathParts[productGpIndex+1].length > 3) {
+            potentialName = pathParts[productGpIndex + 1]; // Often ASIN here, or sometimes a slug after gp/product/
+             // If there's another part after ASIN that looks like a name slug (before ref)
+            if (pathParts.length > productGpIndex + 2 && pathParts[productGpIndex + 2] !== 'ref' && pathParts[productGpIndex + 2].length > 5) {
+                potentialName = pathParts[productGpIndex + 2];
+            }
          }
       }
 
-      if (potentialName && potentialName.length > 3) { // Basic check
+      if (potentialName && potentialName.length > 3 && potentialName !== 'dp' && potentialName !== 'product') { 
+        // Basic check to avoid using 'dp' or 'product' as name
         productName = decodeURIComponent(potentialName.replace(/-/g, ' ')).substring(0, 70); // Decode, replace hyphens, limit length
-         // Capitalize first letter of each word
+        // Capitalize first letter of each word
         productName = productName.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.substring(1)).join(' ');
+      } else {
+        // Fallback if no suitable name part is found
+        const asinMatch = productURL.match(/\/([A-Z0-9]{10})(\/|\?|$)/);
+        if (asinMatch && asinMatch[1]) {
+            productName = `Product ASIN ${asinMatch[1]} (Mock)`;
+        } else {
+            productName = "Fetched Product (Mock Data)";
+        }
       }
       
       productImageURL = `https://placehold.co/300x200.png?text=${encodeURIComponent(productName.substring(0,20))}`;
@@ -82,7 +97,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
     } catch (e) {
       console.warn('Error parsing URL for mock product name:', e);
       // Fallback to generic mock names if URL parsing fails
-       productName = 'Fetched Product (Mock)';
+       productName = 'General Product (Mock)';
        productDescription = 'This is a generally described product (mock data) based on the provided link. It is expected to meet customer needs effectively.';
        productImageURL = `https://placehold.co/300x200.png?text=Product`;
     }
@@ -94,5 +109,3 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
     };
   }
 );
-
-    
