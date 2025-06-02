@@ -101,8 +101,6 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
         {
           asin: asin,
           domainCode: domainCode,
-          // Add any other specific parameters for this actor if needed, e.g., 'proxyCountry' or 'language'
-          // For now, keeping it minimal. Refer to axesso_data~amazon-product-details-scraper docs for options.
         },
       ],
     };
@@ -141,9 +139,8 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
         };
       }
 
-      const productData = datasetItems[0] as any; // Assuming the first item is the main product data
+      const productData = datasetItems[0] as any; 
 
-      // Extract data based on common patterns for such actors. Field names might need adjustment.
       const productName = productData?.title || productData?.productTitle || DEFAULT_PRODUCT_NAME;
       
       let productDescription = DEFAULT_DESCRIPTION;
@@ -155,28 +152,56 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
         productDescription = productData.shortDescription;
       }
       
-      let productImageURL = PLACEHOLDER_IMAGE_URL;
+      let extractedImageURL: string | undefined = undefined;
       if (productData?.mainImage?.link) {
-        productImageURL = productData.mainImage.link;
-      } else if (Array.isArray(productData?.images) && productData.images.length > 0 && productData.images[0]?.link) {
-        productImageURL = productData.images[0].link;
+        extractedImageURL = productData.mainImage.link;
+      } else if (productData?.mainImage?.url) {
+        extractedImageURL = productData.mainImage.url;
+      } else if (Array.isArray(productData?.images) && productData.images.length > 0) {
+        if (typeof productData.images[0]?.link === 'string') {
+          extractedImageURL = productData.images[0].link;
+        } else if (typeof productData.images[0]?.url === 'string') {
+          extractedImageURL = productData.images[0].url;
+        } else if (typeof productData.images[0] === 'string') {
+          extractedImageURL = productData.images[0];
+        }
       } else if (typeof productData?.imageUrl === 'string') {
-        productImageURL = productData.imageUrl;
+        extractedImageURL = productData.imageUrl;
+      } else if (typeof productData?.image === 'string') {
+        extractedImageURL = productData.image;
+      } else if (productData?.image?.link) {
+        extractedImageURL = productData.image.link;
+      } else if (productData?.image?.url) {
+        extractedImageURL = productData.image.url;
+      } else if (productData?.thumbnail) {
+         extractedImageURL = productData.thumbnail;
+      } else if (productData?.picture) {
+         extractedImageURL = productData.picture;
+      } else if (Array.isArray(productData?.media?.images) && productData.media.images.length > 0 && productData.media.images[0]?.url) {
+        extractedImageURL = productData.media.images[0].url;
+      }
+
+
+      if (!extractedImageURL) {
+        console.warn(`Could not find product image URL in Apify response for ASIN ${asin}. Available keys in productData:`, Object.keys(productData).join(', '));
       }
       
-      // Validate and sanitize
       const finalProductName = (typeof productName === 'string' ? productName.trim() : DEFAULT_PRODUCT_NAME).substring(0,150);
-      const finalProductDescription = (typeof productDescription === 'string' ? productDescription.trim() : DEFAULT_DESCRIPTION).substring(0,500);
+      const finalProductDescription = (typeof productDescription === 'string' ? productDescription.trim() : DEFAULT_DESCRIPTION).substring(0,1000); // Increased limit for description
+      
       let finalProductImageURL = PLACEHOLDER_IMAGE_URL;
-      try {
-        if (productImageURL && productImageURL !== PLACEHOLDER_IMAGE_URL) {
-            new URL(productImageURL); // Validate URL
-            finalProductImageURL = productImageURL;
+      if (extractedImageURL) {
+        try {
+          new URL(extractedImageURL); 
+          finalProductImageURL = extractedImageURL;
+        } catch (e) {
+          console.warn(`Invalid image URL from Apify: ${extractedImageURL}. Falling back to placeholder.`);
+          finalProductImageURL = PLACEHOLDER_IMAGE_URL;
         }
-      } catch (e) { /*  Ignore invalid URL, stick to placeholder */ }
+      }
 
 
-      console.log(`Fetched product details from Apify for ASIN ${asin}: Name: ${finalProductName.substring(0,50)}...`);
+      console.log(`Fetched product details from Apify for ASIN ${asin}: Name: ${finalProductName.substring(0,50)}... Image URL: ${finalProductImageURL}`);
       return {
         productName: finalProductName || DEFAULT_PRODUCT_NAME,
         productDescription: finalProductDescription || DEFAULT_DESCRIPTION,
@@ -193,3 +218,4 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
     }
   }
 );
+
