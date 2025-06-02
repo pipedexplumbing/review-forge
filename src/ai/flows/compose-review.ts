@@ -56,35 +56,40 @@ const composeReviewPrompt = ai.definePrompt({
   output: { 
     schema: z.object({ reviewText: z.string().describe('The composed product review text.') }),
   },
-  prompt: `You are an expert product reviewer. Compose a compelling and helpful product review for:
+  prompt: `You are helping me write an Amazon product review. Write the review in the first person, as if I am the one who bought and used the product.
+The review should be ready for me to copy and paste directly into Amazon.
+
 Product Name: {{{productName}}}
 Product Description: {{{productDescription}}}
 
-Incorporate the following user input if provided:
-{{#if starRating}}Star Rating: {{{starRating}}} stars{{/if}}
-{{#if feedbackText}}User Feedback: {{{feedbackText}}}{{/if}}
+Here's my input, if I provided any:
+{{#if starRating}}My Star Rating: {{{starRating}}} stars{{/if}}
+{{#if feedbackText}}My Key Feedback: "{{{feedbackText}}}"{{/if}}
 
 {{#if customerReviewsText}}
-Also, consider these existing customer reviews when crafting your response. You can incorporate snippets or sentiments from them:
---- Customer Reviews Snippets ---
+I've also looked at what other customers are saying. Here are some snippets from their reviews that you can consider:
+--- Customer Review Snippets ---
 {{{customerReviewsText}}}
---- End Customer Reviews Snippets ---
+--- End Customer Review Snippets ---
 {{/if}}
 
-Consider the product description, user feedback, and existing customer reviews (if any) to create a balanced review.
-If star rating is high (4-5), focus on positives. If low (1-2), focus on negatives. If mid-range (3) or no rating, provide a balanced view.
-If no user feedback is provided, generate a general review based on the product name, description, and existing reviews (if any).
-If a star rating is provided but no feedback text, infer general sentiment from the rating.
-Compose the review in varied writing styles, optionally using a pros/cons structure.
-The review should be well-formatted and ready for submission.
-If minimal information is provided (e.g. only product name and description, no customer reviews), create a general positive and engaging review.
-Ensure the review is tailored to the product and feels authentic.
+Based on all this information (the product itself, my feedback, and what other customers said), please write a helpful and authentic-sounding review.
+
+- If I gave a high star rating (4-5 stars) or positive feedback, focus on what I liked.
+- If I gave a low star rating (1-2 stars) or negative feedback, explain my issues.
+- If my rating is mid-range (3 stars) or I didn't give a rating/feedback, provide a balanced perspective.
+- If I only gave a star rating, infer my general sentiment from that.
+- If I provided no feedback or rating at all, write a generally positive and informative review based on the product description and other customer reviews (if available). If there's very little info, create a concise, engaging, and generally positive review.
+
+Make it sound like a real person's experience. You can use varied writing styles, maybe even a pros/cons list if it feels natural.
+Keep it well-formatted and easy to read.
 `,
 });
 
 const GENERIC_PRODUCT_NAMES = [
     "Product (Details Fetching Failed)",
-    "Unknown Product", // Kept from previous versions for broader matching
+    "Unknown Product",
+    "This Product",
 ];
 
 const composeReviewFlow = ai.defineFlow(
@@ -104,31 +109,25 @@ const composeReviewFlow = ai.defineFlow(
         productTitle: undefined,
     };
 
-    // Fetch product info (Apify Product Details) and reviews (Apify Reviews)
-    // These can run in parallel for efficiency, but for simplicity, let's do sequentially.
-    // For a production app, consider Promise.all for parallel execution.
     try {
       fetchedProductInfo = await fetchAmazonProductInfoTool({ productURL: input.amazonLink });
     } catch (toolError) {
       console.warn('Failed to fetch product info with Apify product details tool:', toolError);
-      // Proceed with default/minimal product info
     }
 
     try {
         fetchedApifyReviewsData = await fetchAmazonReviewsApifyTool({ productURL: input.amazonLink });
     } catch (toolError) {
         console.warn('Failed to fetch customer reviews/title with Apify reviews tool:', toolError);
-        // Proceed without customer reviews or Apify title
     }
     
     const customerReviewsText = fetchedApifyReviewsData.reviews.length > 0 
-        ? fetchedApifyReviewsData.reviews.slice(0, 10).map(review => `- ${review.substring(0, 300)}${review.length > 300 ? '...' : ''}`).join('\\n') // Limit number and length of reviews for prompt
+        ? fetchedApifyReviewsData.reviews.slice(0, 10).map(review => `- ${review.substring(0, 300)}${review.length > 300 ? '...' : ''}`).join('\\n')
         : undefined;
 
     let finalProductName = fetchedProductInfo.productName;
     // If product details tool returned a generic name, but reviews tool got a specific title, prefer reviews tool's title.
-    // This is a fallback, ideally the product details tool should be more accurate for the name.
-    if (GENERIC_PRODUCT_NAMES.includes(finalProductName) && fetchedApifyReviewsData.productTitle) {
+    if (GENERIC_PRODUCT_NAMES.includes(finalProductName) && fetchedApifyReviewsData.productTitle && fetchedApifyReviewsData.productTitle.trim() !== "") {
         finalProductName = fetchedApifyReviewsData.productTitle;
     }
     // If still generic, use a very basic default.
@@ -158,4 +157,3 @@ const composeReviewFlow = ai.defineFlow(
     };
   }
 );
-
