@@ -5,8 +5,8 @@
 /**
  * @fileOverview This file defines a Genkit flow for composing product reviews.
  * It takes an Amazon product link and optional user feedback.
- * Product details are fetched using an AI tool (web scraper).
- * Product reviews and title are fetched using an Apify AI tool.
+ * Product details are fetched using an Apify Product Details AI tool.
+ * Product reviews and title are fetched using an Apify Reviews AI tool.
  *
  * - composeReview - A function that composes a product review.
  * - ComposeReviewInput - The input type for the composeReview function.
@@ -28,8 +28,8 @@ export type ComposeReviewInput = z.infer<typeof ComposeReviewInputSchema>;
 
 const ComposeReviewOutputSchema = z.object({
   reviewText: z.string().describe('The composed product review text.'),
-  fetchedProductName: z.string().optional().describe('The product name fetched from the Amazon link or Apify.'),
-  fetchedProductImageURL: z.string().url().optional().describe('The product image URL fetched from the Amazon link.'),
+  fetchedProductName: z.string().optional().describe('The product name fetched from Apify product details tool or reviews tool.'),
+  fetchedProductImageURL: z.string().url().optional().describe('The product image URL fetched from Apify product details tool.'),
 });
 
 export type ComposeReviewOutput = z.infer<typeof ComposeReviewOutputSchema>;
@@ -77,15 +77,14 @@ If no user feedback is provided, generate a general review based on the product 
 If a star rating is provided but no feedback text, infer general sentiment from the rating.
 Compose the review in varied writing styles, optionally using a pros/cons structure.
 The review should be well-formatted and ready for submission.
-If minimal information is provided (only product name and description, no customer reviews), create a general positive and engaging review.
+If minimal information is provided (e.g. only product name and description, no customer reviews), create a general positive and engaging review.
+Ensure the review is tailored to the product and feels authentic.
 `,
 });
 
 const GENERIC_PRODUCT_NAMES = [
-    "Unknown Product", 
-    "Product (Details not fully fetched)", 
-    "Product (Scraping Error)",
-    "Product (Fetching Failed)" 
+    "Product (Details Fetching Failed)",
+    "Unknown Product", // Kept from previous versions for broader matching
 ];
 
 const composeReviewFlow = ai.defineFlow(
@@ -96,39 +95,45 @@ const composeReviewFlow = ai.defineFlow(
   },
   async (input: ComposeReviewInput) => {
     let fetchedProductInfo: FetchAmazonProductInfoOutput = {
-        productName: "Unknown Product",
+        productName: "Product (Details Fetching Failed)",
         productDescription: "No description available.",
         productImageURL: undefined,
     };
-    let fetchedApifyData: FetchAmazonReviewsApifyOutput = {
+    let fetchedApifyReviewsData: FetchAmazonReviewsApifyOutput = {
         reviews: [],
         productTitle: undefined,
     };
 
-    // Fetch product info (scraper) and reviews (Apify)
-    // We can run these in parallel, but for simplicity let's do sequentially
+    // Fetch product info (Apify Product Details) and reviews (Apify Reviews)
+    // These can run in parallel for efficiency, but for simplicity, let's do sequentially.
+    // For a production app, consider Promise.all for parallel execution.
     try {
       fetchedProductInfo = await fetchAmazonProductInfoTool({ productURL: input.amazonLink });
     } catch (toolError) {
-      console.warn('Failed to fetch product info with scraper tool:', toolError);
+      console.warn('Failed to fetch product info with Apify product details tool:', toolError);
       // Proceed with default/minimal product info
     }
 
     try {
-        fetchedApifyData = await fetchAmazonReviewsApifyTool({ productURL: input.amazonLink });
+        fetchedApifyReviewsData = await fetchAmazonReviewsApifyTool({ productURL: input.amazonLink });
     } catch (toolError) {
-        console.warn('Failed to fetch customer reviews/title with Apify tool:', toolError);
+        console.warn('Failed to fetch customer reviews/title with Apify reviews tool:', toolError);
         // Proceed without customer reviews or Apify title
     }
     
-    const customerReviewsText = fetchedApifyData.reviews.length > 0 
-        ? fetchedApifyData.reviews.slice(0, 10).map(review => `- ${review.substring(0, 300)}${review.length > 300 ? '...' : ''}`).join('\\n') // Limit number and length of reviews for prompt
+    const customerReviewsText = fetchedApifyReviewsData.reviews.length > 0 
+        ? fetchedApifyReviewsData.reviews.slice(0, 10).map(review => `- ${review.substring(0, 300)}${review.length > 300 ? '...' : ''}`).join('\\n') // Limit number and length of reviews for prompt
         : undefined;
 
     let finalProductName = fetchedProductInfo.productName;
-    // If scraper returned a generic name, and Apify got a specific title, use Apify's title
-    if (GENERIC_PRODUCT_NAMES.includes(finalProductName) && fetchedApifyData.productTitle) {
-        finalProductName = fetchedApifyData.productTitle;
+    // If product details tool returned a generic name, but reviews tool got a specific title, prefer reviews tool's title.
+    // This is a fallback, ideally the product details tool should be more accurate for the name.
+    if (GENERIC_PRODUCT_NAMES.includes(finalProductName) && fetchedApifyReviewsData.productTitle) {
+        finalProductName = fetchedApifyReviewsData.productTitle;
+    }
+    // If still generic, use a very basic default.
+    if (GENERIC_PRODUCT_NAMES.includes(finalProductName)) {
+        finalProductName = "This Product";
     }
 
 
