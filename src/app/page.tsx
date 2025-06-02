@@ -25,7 +25,6 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
-// Define the placeholder URL used by the Apify tool for easier comparison
 const API_PLACEHOLDER_IMAGE_URL = 'https://placehold.co/80x80.png';
 
 export default function ReviewForgePage() {
@@ -35,7 +34,7 @@ export default function ReviewForgePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
-  const { toast } = useToast();
+  const { toast, dismiss: dismissToast } = useToast();
   const [currentYear, setCurrentYear] = useState<number | null>(null);
   const [imageHasError, setImageHasError] = useState(false);
 
@@ -58,7 +57,7 @@ export default function ReviewForgePage() {
     setGeneratedReview(null);
     setFetchedProductName(null);
     setFetchedProductImageURL(null);
-    setImageHasError(false); // Reset image error state for new submission
+    setImageHasError(false); 
 
     const aiInput: ComposeReviewInput = {
       amazonLink: data.amazonLink,
@@ -74,6 +73,7 @@ export default function ReviewForgePage() {
       }
       if (result.fetchedProductImageURL) {
         setFetchedProductImageURL(result.fetchedProductImageURL);
+        setImageHasError(false); // Reset error state if new URL is fetched
       }
       toast({
         title: "Review Forged!",
@@ -98,12 +98,16 @@ export default function ReviewForgePage() {
       try {
         await navigator.clipboard.writeText(generatedReview);
         setIsCopied(true);
-        toast({
+        const { id: toastId } = toast({
           title: "Copied!",
           description: "Review copied to clipboard.",
         });
-        setTimeout(() => setIsCopied(false), 2000);
+        setTimeout(() => {
+          dismissToast(toastId);
+          setIsCopied(false);
+        }, 3000); // Dismiss toast and reset button after 3 seconds
       } catch (err) {
+        console.error("Failed to copy review:", err);
         toast({
           title: "Copy Failed",
           description: "Could not copy review to clipboard.",
@@ -112,6 +116,10 @@ export default function ReviewForgePage() {
       }
     }
   };
+
+  const showActualImage = fetchedProductImageURL &&
+                          fetchedProductImageURL !== API_PLACEHOLDER_IMAGE_URL &&
+                          !imageHasError;
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center py-8 px-4 transition-colors duration-300">
@@ -226,16 +234,17 @@ export default function ReviewForgePage() {
             <CardContent className="p-6 md:p-8 space-y-4">
               {fetchedProductName && (
                 <div className="p-4 border rounded-lg flex items-center space-x-4 bg-card hover:border-primary/50 transition-colors">
-                  {(fetchedProductImageURL && fetchedProductImageURL !== API_PLACEHOLDER_IMAGE_URL && !imageHasError) ? (
+                  {showActualImage ? (
                     <Image
                       key={fetchedProductImageURL} 
-                      src={fetchedProductImageURL}
+                      src={fetchedProductImageURL!}
                       alt={fetchedProductName || "Product Image"}
                       width={80}
                       height={80}
                       className="rounded-md object-cover"
                       data-ai-hint="product photo"
                       onError={() => {
+                        console.warn(`Image failed to load: ${fetchedProductImageURL}`);
                         setImageHasError(true);
                       }}
                     />
@@ -261,7 +270,7 @@ export default function ReviewForgePage() {
             </CardContent>
             {generatedReview && (
               <CardFooter className="p-6 border-t">
-                <Button onClick={handleCopyReview} variant="outline" className="w-full text-lg py-6 font-headline transition-transform hover:scale-105" size="lg">
+                <Button onClick={handleCopyReview} variant="outline" className="w-full text-lg py-6 font-headline transition-transform hover:scale-105" size="lg" disabled={isCopied}>
                   {isCopied ? <Check className="mr-2 h-5 w-5 text-green-500" /> : <Copy className="mr-2 h-5 w-5" />}
                   {isCopied ? 'Copied!' : 'Copy Review Text'}
                 </Button>
@@ -278,4 +287,3 @@ export default function ReviewForgePage() {
     </div>
   );
 }
-
