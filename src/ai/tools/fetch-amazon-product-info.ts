@@ -36,9 +36,9 @@ export type FetchAmazonProductInfoOutput = z.infer<typeof FetchAmazonProductInfo
 
 const DEFAULT_PRODUCT_NAME = 'Product (Details not fully fetched)';
 const DEFAULT_DESCRIPTION = 'Could not fetch detailed product description. Please refer to the Amazon page.';
-const PLACEHOLDER_IMAGE_BASE = 'https://placehold.co/300x200.png?text=';
+const PLACEHOLDER_IMAGE_URL = 'https://placehold.co/80x80.png'; // Standardized size, no text parameter
 
-async function fetchPage(url: string) {
+async function fetchPage(url: string): Promise<string | null> {
   try {
     const response = await fetch(url, {
       headers: {
@@ -46,10 +46,9 @@ async function fetchPage(url: string) {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-        // Add other headers if necessary, e.g., 'Accept-Encoding': 'gzip, deflate, br'
       },
-      // Next.js fetch specific caching options can be managed here if needed
-      // cache: 'no-store', // Uncomment to ensure fresh data, but be mindful of rate limits
+      // Consider adding a timeout for fetch requests in a production environment
+      // next: { revalidate: 60 } // Revalidate cache every 60 seconds
     });
     if (!response.ok) {
       console.error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
@@ -57,7 +56,7 @@ async function fetchPage(url: string) {
     }
     return await response.text();
   } catch (error) {
-    console.error(`Error fetching ${url}:`, error);
+    console.error(`Error during fetch operation for ${url}:`, error);
     return null;
   }
 }
@@ -73,14 +72,31 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
   async ({ productURL }): Promise<FetchAmazonProductInfoOutput> => {
     let productName = DEFAULT_PRODUCT_NAME;
     let productDescription = DEFAULT_DESCRIPTION;
-    let productImageURL: string | undefined = `${PLACEHOLDER_IMAGE_BASE}Product`;
+    let productImageURL: string | undefined = PLACEHOLDER_IMAGE_URL;
+
+    const html = await fetchPage(productURL);
+
+    if (!html) {
+      console.warn(`HTML content could not be fetched for ${productURL}. Using fallback data.`);
+      // Attempt to derive name from URL even if fetch fails
+      try {
+        const urlObj = new URL(productURL);
+        const pathParts = urlObj.pathname.split('/');
+        const dpIndex = pathParts.findIndex(part => part === 'dp');
+        if (dpIndex > 0 && pathParts[dpIndex -1] && pathParts[dpIndex -1].length > 3) {
+            const potentialName = decodeURIComponent(pathParts[dpIndex - 1].replace(/-/g, ' '));
+             productName = potentialName.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.substring(1)).join(' ');
+        }
+      } catch (e) { /* ignore URL parsing error for name */ }
+      
+      return {
+        productName: productName !== DEFAULT_PRODUCT_NAME ? productName : "Product (Fetching Failed)",
+        productDescription: DEFAULT_DESCRIPTION,
+        productImageURL: PLACEHOLDER_IMAGE_URL,
+      };
+    }
 
     try {
-      const html = await fetchPage(productURL);
-      if (!html) {
-        throw new Error('Failed to fetch page content.');
-      }
-
       const $ = cheerio.load(html);
 
       // 1. Extract Product Title
@@ -88,10 +104,8 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       if (titleElement.length > 0) {
         productName = titleElement.text().trim();
       } else {
-         // Fallback: try to get from meta title
         const metaTitle = $('head > title').text().trim();
         if (metaTitle) {
-            // Often Amazon titles are like "Amazon.com: Actual Product Title"
             const parts = metaTitle.split(':');
             if (parts.length > 1) {
                 productName = parts.slice(1).join(':').trim();
@@ -100,9 +114,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
             }
         }
       }
-      // Clean up product name further if it's still the default or very generic
       if (productName === DEFAULT_PRODUCT_NAME || productName.toLowerCase().startsWith("amazon.com")) {
-         // Try to parse from URL as a last resort if title scraping failed
         try {
             const urlObj = new URL(productURL);
             const pathParts = urlObj.pathname.split('/');
@@ -114,13 +126,11 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
         } catch (e) { /* ignore URL parsing error for name */ }
       }
 
-
       // 2. Extract Product Image URL
-      // Common selectors for main product image. Order matters.
       const imageSelectors = [
-        '#landingImage', // Primary image
-        '#imgBlkFront', // Another common ID
-        '#ebooksImgBlkFront', // For Kindle ebooks
+        '#landingImage', 
+        '#imgBlkFront', 
+        '#ebooksImgBlkFront', 
         '#main-image-container img',
         '#imgTagWrapperId img',
       ];
@@ -128,43 +138,39 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
         const imgElement = $(selector);
         if (imgElement.length > 0) {
           let src = imgElement.attr('src');
-          if (!src) src = imgElement.attr('data-old-hires'); // High-res version often here
-          if (!src) src = imgElement.attr('data-src'); // Sometimes in data-src
+          if (!src) src = imgElement.attr('data-old-hires');
+          if (!src) src = imgElement.attr('data-src');
           if (src && (src.startsWith('http') || src.startsWith('//'))) {
             productImageURL = src.startsWith('//') ? `https:${src}` : src;
             break; 
           }
         }
       }
-      // Fallback for image if still not found
-      if (!productImageURL || productImageURL.includes('placehold.co')) {
+      if (!productImageURL || productImageURL === PLACEHOLDER_IMAGE_URL) {
          const openGraphImage = $('meta[property="og:image"]').attr('content');
          if (openGraphImage) {
             productImageURL = openGraphImage;
          } else {
-             productImageURL = `${PLACEHOLDER_IMAGE_BASE}${encodeURIComponent(productName.substring(0,20))}`;
+            productImageURL = PLACEHOLDER_IMAGE_URL;
          }
       }
 
 
       // 3. Extract Product Description (brief)
-      // Attempt 1: Meta description
       let description = $('meta[name="description"]').attr('content');
       if (description) {
         productDescription = description.trim();
       } else {
-        // Attempt 2: Feature bullets (first few)
         const featureBullets: string[] = [];
         $('#feature-bullets .a-list-item').each((i, el) => {
-          if (i < 3) { // Take up to 3 bullet points
+          if (i < 3) { 
             featureBullets.push($(el).text().trim());
           }
         });
         if (featureBullets.length > 0) {
           productDescription = featureBullets.join(' ');
         } else {
-            // Attempt 3: Book description if it's a book
-            const bookDesc = $('#bookDescription_feature_div noscript').html(); // Often in noscript for books
+            const bookDesc = $('#bookDescription_feature_div noscript').html(); 
             if (bookDesc) {
                 const cleanBookDesc = cheerio.load(bookDesc)('div').text().replace(/\s+/g, ' ').trim();
                 productDescription = cleanBookDesc.substring(0, 300) + (cleanBookDesc.length > 300 ? '...' : '');
@@ -173,34 +179,22 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
             }
         }
       }
-      // Limit description length
       if (productDescription.length > 500) {
           productDescription = productDescription.substring(0, 497) + "...";
       }
 
-
     } catch (e) {
-      console.warn('Full scraping attempt failed, using fallback data:', e instanceof Error ? e.message : String(e));
-      // Ensure productName has a somewhat reasonable value if initial scraping failed badly
-      if (productName === DEFAULT_PRODUCT_NAME) {
-        try {
-            const url = new URL(productURL);
-            const pathParts = url.pathname.split('/');
-            const dpIndex = pathParts.findIndex((part) => part === 'dp');
-            if (dpIndex > 0 && pathParts[dpIndex - 1] && pathParts[dpIndex - 1].length > 3) {
-                 const potentialName = decodeURIComponent(pathParts[dpIndex - 1].replace(/-/g, ' '));
-                 productName = potentialName.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.substring(1)).join(' ');
-            }
-        } catch (urlParseError) { /* fallback to default name */ }
-      }
-      productImageURL = `${PLACEHOLDER_IMAGE_BASE}${encodeURIComponent(productName.substring(0,20))}`;
+      console.warn('Scraping attempt partially failed or encountered an error, using available/fallback data:', e instanceof Error ? e.message : String(e));
+      // Use already derived productName if available, otherwise default
+      productName = (productName !== DEFAULT_PRODUCT_NAME) ? productName : "Product (Scraping Error)";
+      productImageURL = PLACEHOLDER_IMAGE_URL; // Fallback image on any scraping error
+      productDescription = DEFAULT_DESCRIPTION; // Fallback description
     }
 
     return {
       productName: productName || DEFAULT_PRODUCT_NAME,
       productDescription: productDescription || DEFAULT_DESCRIPTION,
-      productImageURL: productImageURL || `${PLACEHOLDER_IMAGE_BASE}Product`,
+      productImageURL: productImageURL || PLACEHOLDER_IMAGE_URL,
     };
   }
 );
-

@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -33,6 +33,11 @@ export default function ReviewForgePage() {
   const [error, setError] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const { toast } = useToast();
+  const [currentYear, setCurrentYear] = useState<number | null>(null);
+
+  useEffect(() => {
+    setCurrentYear(new Date().getFullYear());
+  }, []);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -206,7 +211,7 @@ export default function ReviewForgePage() {
           </Card>
         )}
         
-        {(generatedReview || fetchedProductName || fetchedProductImageURL) && (
+        {(generatedReview || fetchedProductName || fetchedProductImageURL) && !isLoading && (
           <Card className="shadow-2xl rounded-xl overflow-hidden animate-in fade-in-50 duration-500">
             <CardHeader className="bg-gradient-to-br from-accent/70 to-primary/80 p-6">
               <CardTitle className="font-headline text-3xl text-primary-foreground flex items-center">
@@ -225,11 +230,14 @@ export default function ReviewForgePage() {
                       className="rounded-md object-cover"
                       data-ai-hint="product photo"
                       onError={(e) => {
-                        e.currentTarget.style.display = 'none'; 
-                        const placeholder = document.createElement('div');
-                        placeholder.className = 'w-[80px] h-[80px] bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground';
-                        placeholder.textContent = 'No Image';
-                        e.currentTarget.parentElement?.insertBefore(placeholder, e.currentTarget);
+                        // Replace with placeholder if image fails to load
+                        const parent = e.currentTarget.parentElement;
+                        if (parent) {
+                            const placeholder = document.createElement('div');
+                            placeholder.className = 'w-[80px] h-[80px] bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground';
+                            placeholder.textContent = 'No Image';
+                            parent.replaceChild(placeholder, e.currentTarget);
+                        }
                        }}
                     />
                   )}
@@ -258,11 +266,9 @@ export default function ReviewForgePage() {
       </div>
       <footer className="mt-12 text-center">
         <p className="text-sm text-muted-foreground font-body">
-          &copy; {new Date().getFullYear()} Review Forge. AI-powered review assistance.
+          &copy; {currentYear || '...'} Review Forge. AI-powered review assistance.
         </p>
       </footer>
     </div>
   );
 }
-
-    
