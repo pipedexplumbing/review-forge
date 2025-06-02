@@ -6,7 +6,7 @@
  * @fileOverview This file defines a Genkit flow for composing product reviews.
  * It takes an Amazon product link and optional user feedback.
  * Product details are fetched using an AI tool (web scraper).
- * Product reviews are fetched using an Apify AI tool.
+ * Product reviews and title are fetched using an Apify AI tool.
  *
  * - composeReview - A function that composes a product review.
  * - ComposeReviewInput - The input type for the composeReview function.
@@ -28,7 +28,7 @@ export type ComposeReviewInput = z.infer<typeof ComposeReviewInputSchema>;
 
 const ComposeReviewOutputSchema = z.object({
   reviewText: z.string().describe('The composed product review text.'),
-  fetchedProductName: z.string().optional().describe('The product name fetched from the Amazon link.'),
+  fetchedProductName: z.string().optional().describe('The product name fetched from the Amazon link or Apify.'),
   fetchedProductImageURL: z.string().url().optional().describe('The product image URL fetched from the Amazon link.'),
 });
 
@@ -81,6 +81,13 @@ If minimal information is provided (only product name and description, no custom
 `,
 });
 
+const GENERIC_PRODUCT_NAMES = [
+    "Unknown Product", 
+    "Product (Details not fully fetched)", 
+    "Product (Scraping Error)",
+    "Product (Fetching Failed)" 
+];
+
 const composeReviewFlow = ai.defineFlow(
   {
     name: 'composeReviewFlow',
@@ -93,32 +100,40 @@ const composeReviewFlow = ai.defineFlow(
         productDescription: "No description available.",
         productImageURL: undefined,
     };
-    let fetchedCustomerReviews: FetchAmazonReviewsApifyOutput = {
-        reviews: []
+    let fetchedApifyData: FetchAmazonReviewsApifyOutput = {
+        reviews: [],
+        productTitle: undefined,
     };
 
+    // Fetch product info (scraper) and reviews (Apify)
+    // We can run these in parallel, but for simplicity let's do sequentially
     try {
-      // Fetch product info and reviews in parallel if desired, or sequentially
-      // For simplicity, let's do it sequentially first.
       fetchedProductInfo = await fetchAmazonProductInfoTool({ productURL: input.amazonLink });
     } catch (toolError) {
-      console.warn('Failed to fetch product info with tool:', toolError);
+      console.warn('Failed to fetch product info with scraper tool:', toolError);
       // Proceed with default/minimal product info
     }
 
     try {
-        fetchedCustomerReviews = await fetchAmazonReviewsApifyTool({ productURL: input.amazonLink });
+        fetchedApifyData = await fetchAmazonReviewsApifyTool({ productURL: input.amazonLink });
     } catch (toolError) {
-        console.warn('Failed to fetch customer reviews with Apify tool:', toolError);
-        // Proceed without customer reviews
+        console.warn('Failed to fetch customer reviews/title with Apify tool:', toolError);
+        // Proceed without customer reviews or Apify title
     }
     
-    const customerReviewsText = fetchedCustomerReviews.reviews.length > 0 
-        ? fetchedCustomerReviews.reviews.map(review => `- ${review}`).join('\\n') // Format as a list
+    const customerReviewsText = fetchedApifyData.reviews.length > 0 
+        ? fetchedApifyData.reviews.slice(0, 10).map(review => `- ${review.substring(0, 300)}${review.length > 300 ? '...' : ''}`).join('\\n') // Limit number and length of reviews for prompt
         : undefined;
 
+    let finalProductName = fetchedProductInfo.productName;
+    // If scraper returned a generic name, and Apify got a specific title, use Apify's title
+    if (GENERIC_PRODUCT_NAMES.includes(finalProductName) && fetchedApifyData.productTitle) {
+        finalProductName = fetchedApifyData.productTitle;
+    }
+
+
     const promptInput: z.infer<typeof ComposeReviewPromptInputSchema> = {
-      productName: fetchedProductInfo.productName,
+      productName: finalProductName,
       productDescription: fetchedProductInfo.productDescription,
       starRating: input.starRating,
       feedbackText: input.feedbackText,
@@ -133,8 +148,9 @@ const composeReviewFlow = ai.defineFlow(
 
     return {
       reviewText: promptOutput.reviewText,
-      fetchedProductName: fetchedProductInfo.productName,
+      fetchedProductName: finalProductName,
       fetchedProductImageURL: fetchedProductInfo.productImageURL,
     };
   }
 );
+

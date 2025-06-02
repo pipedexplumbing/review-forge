@@ -4,9 +4,9 @@
  * @fileOverview AI Tool for fetching Amazon product reviews using the Apify API
  * with the axesso_data~amazon-reviews-scraper actor.
  *
- * - fetchAmazonReviewsApifyTool - An AI tool that calls an Apify actor to get product reviews.
+ * - fetchAmazonReviewsApifyTool - An AI tool that calls an Apify actor to get product reviews and product title.
  * - FetchAmazonReviewsApifyInput - Input schema for the tool (Amazon product URL).
- * - FetchAmazonReviewsApifyOutput - Output schema for the tool (array of review texts).
+ * - FetchAmazonReviewsApifyOutput - Output schema for the tool (array of review texts and an optional product title).
  */
 
 import { ai } from '@/ai/genkit';
@@ -22,6 +22,7 @@ export type FetchAmazonReviewsApifyInput = z.infer<typeof FetchAmazonReviewsApif
 
 const FetchAmazonReviewsApifyOutputSchema = z.object({
   reviews: z.array(z.string()).describe('An array of extracted review text snippets.'),
+  productTitle: z.string().optional().describe('The product title extracted by Apify, if available.'),
 });
 export type FetchAmazonReviewsApifyOutput = z.infer<typeof FetchAmazonReviewsApifyOutputSchema>;
 
@@ -32,8 +33,8 @@ function extractAsinAndDomain(productURL: string): { asin: string | null; domain
     const hostname = url.hostname; // e.g., www.amazon.com, www.amazon.co.uk
 
     // Extract ASIN (typically 10 alphanumeric characters)
-    // Common patterns: /dp/ASIN, /gp/product/ASIN
-    const asinMatch = productURL.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/);
+    // Common patterns: /dp/ASIN, /gp/product/ASIN, /-/ASIN
+    const asinMatch = productURL.match(/\/(?:dp|gp\/product|-)\/([A-Z0-9]{10})/);
     const asin = asinMatch ? asinMatch[1] : null;
 
     // Extract domain code
@@ -41,23 +42,20 @@ function extractAsinAndDomain(productURL: string): { asin: string | null; domain
     if (hostname.includes('amazon.')) {
       const parts = hostname.split('amazon.');
       if (parts.length > 1) {
-        // e.g., "com", "co.uk", "de"
         domainCode = parts[1];
-        if (domainCode.startsWith('www.')) { // Should not happen with parts[1] but good to check
+        if (domainCode.startsWith('www.')) { 
             domainCode = domainCode.substring(4);
         }
-         // Handle cases like com.br, com.mx - the actor expects just "br", "mx" after "com."
-        if (domainCode.startsWith('com.')) {
-            domainCode = domainCode.substring(4);
+        // Handle cases like com.br, com.mx - the actor expects just "br", "mx" after "com."
+        // And co.uk, co.jp etc. the actor expects just "co.uk", "co.jp"
+        // This logic seems to be what axesso_data~amazon-reviews-scraper expects for domainCode
+        // e.g. "com" for amazon.com, "de" for amazon.de, "co.uk" for amazon.co.uk
+        if (domainCode.includes('/')) { // remove any path
+            domainCode = domainCode.split('/')[0];
         }
       }
     }
-    // If it's something like amazon.com, parts[1] will be 'com'.
-    // If amazon.co.uk, parts[1] will be 'co.uk'.
-    // The actor docs specify "com" for amazon.com, "de" for amazon.de.
-    // "co.uk" for amazon.co.uk seems standard for Apify actors if they need TLD.
-    // Let's assume the actor expects the full TLD part like "com", "co.uk", "de".
-
+    
     return { asin, domainCode };
   } catch (error) {
     console.error('Error parsing Amazon URL:', error);
@@ -70,7 +68,7 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
   {
     name: 'fetchAmazonReviewsApifyTool',
     description:
-      'Fetches Amazon product reviews using the Apify actor "axesso_data~amazon-reviews-scraper". Requires an APIFY_API_TOKEN environment variable.',
+      'Fetches Amazon product reviews and product title using the Apify actor "axesso_data~amazon-reviews-scraper". Requires an APIFY_API_TOKEN environment variable.',
     inputSchema: FetchAmazonReviewsApifyInputSchema,
     outputSchema: FetchAmazonReviewsApifyOutputSchema,
   },
@@ -78,27 +76,26 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
     const apifyToken = process.env.APIFY_API_TOKEN;
     if (!apifyToken) {
       console.error('APIFY_API_TOKEN environment variable is not set.');
-      return { reviews: [] };
+      return { reviews: [], productTitle: undefined };
     }
 
     const { asin, domainCode } = extractAsinAndDomain(productURL);
 
     if (!asin || !domainCode) {
       console.error(`Could not extract ASIN or domain code from URL: ${productURL}`);
-      return { reviews: [] };
+      return { reviews: [], productTitle: undefined };
     }
 
     const actorId = 'axesso_data~amazon-reviews-scraper';
     const apifyUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apifyToken}`;
 
     const actorInput = {
-      input: [ // Actor expects an array called "input"
+      input: [ 
         {
           asin: asin,
           domainCode: domainCode,
-          maxPages: 1, // Fetch reviews from the first page
-          sortBy: "recent", // Options: "recent", "helpful"
-          // Other optional parameters from docs: filterByStar, filterByKeyword, reviewerType, etc.
+          maxPages: 1, 
+          sortBy: "recent", 
         },
       ],
     };
@@ -119,35 +116,37 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
         console.error(
           `Apify API request failed for ASIN ${asin} (${domainCode}) on URL ${productURL}: ${response.status} ${response.statusText}. Body: ${errorBody.substring(0, 500)}`
         );
-        return { reviews: [] };
+        return { reviews: [], productTitle: undefined };
       }
 
-      // The run-sync-get-dataset-items endpoint directly returns the array of dataset items.
       const datasetItems: unknown = await response.json();
 
       if (!Array.isArray(datasetItems)) {
         console.error(`Apify API response for ASIN ${asin} is not an array of dataset items:`, datasetItems);
-        return { reviews: [] };
+        return { reviews: [], productTitle: undefined };
       }
 
       const extractedReviews: string[] = [];
+      let extractedProductTitle: string | undefined = undefined;
+
       for (const item of datasetItems) {
-        // Based on the provided output documentation, the review text is in the "text" field.
-        if (typeof item === 'object' && item !== null && typeof (item as any).text === 'string') {
-          const reviewText = (item as any).text;
-          if (reviewText.trim() !== '') {
-            extractedReviews.push(reviewText.trim());
+        if (typeof item === 'object' && item !== null) {
+          if (typeof (item as any).text === 'string' && (item as any).text.trim() !== '') {
+            extractedReviews.push((item as any).text.trim());
+          }
+          // Attempt to get productTitle from the first item, assuming it's consistent
+          if (!extractedProductTitle && typeof (item as any).productTitle === 'string') {
+            extractedProductTitle = (item as any).productTitle.trim();
           }
         }
       }
       
-      // console.log(`Fetched ${extractedReviews.length} reviews from Apify for ASIN ${asin} (${productURL})`);
-      return { reviews: extractedReviews };
+      // console.log(`Fetched ${extractedReviews.length} reviews and title "${extractedProductTitle || 'N/A'}" from Apify for ASIN ${asin} (${productURL})`);
+      return { reviews: extractedReviews, productTitle: extractedProductTitle };
 
     } catch (error) {
       console.error(`Error calling Apify API or processing reviews for ASIN ${asin} (${productURL}):`, error);
-      return { reviews: [] }; 
+      return { reviews: [], productTitle: undefined }; 
     }
   }
 );
-
