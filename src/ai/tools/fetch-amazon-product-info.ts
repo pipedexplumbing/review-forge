@@ -1,12 +1,12 @@
 
 'use server';
 /**
- * @fileOverview AI Tool for fetching product information (name, description, image) from an Amazon product link
+ * @fileOverview AI Tool for fetching product information (name, description) from an Amazon product link
  * using the Apify actor "axesso_data~amazon-product-details-scraper".
  *
  * - fetchAmazonProductInfoTool - An AI tool that calls an Apify actor to get product details.
  * - FetchAmazonProductInfoInput - Input schema for the tool (Amazon product URL).
- * - FetchAmazonProductInfoOutput - Output schema for the tool (product name, description, image URL).
+ * - FetchAmazonProductInfoOutput - Output schema for the tool (product name, description).
  */
 
 import { ai } from '@/ai/genkit';
@@ -25,13 +25,11 @@ const FetchAmazonProductInfoOutputSchema = z.object({
   productDescription: z
     .string()
     .describe('A brief description or key features of the product.'),
-  productImageURL: z.string().url().optional().describe('A URL for the main product image, if found.'),
 });
 export type FetchAmazonProductInfoOutput = z.infer<typeof FetchAmazonProductInfoOutputSchema>;
 
 const DEFAULT_PRODUCT_NAME = 'Product (Details Fetching Failed)';
 const DEFAULT_DESCRIPTION = 'Could not fetch detailed product description. Please refer to the Amazon page.';
-const PLACEHOLDER_IMAGE_URL = 'https://placehold.co/80x80.png';
 
 
 // Helper function to extract ASIN and domain code from Amazon URL
@@ -69,7 +67,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
   {
     name: 'fetchAmazonProductInfoTool',
     description:
-      'Fetches Amazon product details (name, description, image) using the Apify actor "axesso_data~amazon-product-details-scraper". Requires an APIFY_API_TOKEN environment variable.',
+      'Fetches Amazon product details (name, description) using the Apify actor "axesso_data~amazon-product-details-scraper". Requires an APIFY_API_TOKEN environment variable.',
     inputSchema: FetchAmazonProductInfoInputSchema,
     outputSchema: FetchAmazonProductInfoOutputSchema,
   },
@@ -80,7 +78,6 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       return {
         productName: DEFAULT_PRODUCT_NAME,
         productDescription: DEFAULT_DESCRIPTION,
-        productImageURL: PLACEHOLDER_IMAGE_URL,
       };
     }
 
@@ -91,7 +88,6 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       return {
         productName: DEFAULT_PRODUCT_NAME,
         productDescription: DEFAULT_DESCRIPTION,
-        productImageURL: PLACEHOLDER_IMAGE_URL,
       };
     }
 
@@ -126,7 +122,6 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
         return {
           productName: DEFAULT_PRODUCT_NAME,
           productDescription: DEFAULT_DESCRIPTION,
-          productImageURL: PLACEHOLDER_IMAGE_URL,
         };
       }
 
@@ -137,66 +132,36 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
         return {
           productName: DEFAULT_PRODUCT_NAME,
           productDescription: DEFAULT_DESCRIPTION,
-          productImageURL: PLACEHOLDER_IMAGE_URL,
         };
       }
 
-      const productData = datasetItems[0] as any;
+      const productData = datasetItems[0] as any; // Cast to any to access potential fields
       console.log(`[fetchAmazonProductInfoTool] Received productData for ASIN ${asin}. Attempting to extract details.`);
 
       const productName = productData?.title || DEFAULT_PRODUCT_NAME;
       
-      let productDescription = productData?.productDescription || DEFAULT_DESCRIPTION;
+      let productDescription = productData?.productDescription || "";
       if (Array.isArray(productData?.features) && productData.features.length > 0) {
         const featuresText = productData.features.join('. ');
-        if (productDescription === DEFAULT_DESCRIPTION || productDescription.length < featuresText.length) {
+        if (productDescription.length < featuresText.length) {
           productDescription = featuresText;
-        } else if (productDescription !== DEFAULT_DESCRIPTION) {
+        } else if (productDescription) {
           productDescription += '. ' + featuresText;
+        } else {
+          productDescription = featuresText;
         }
       }
-      
-      let extractedImageURL: string | undefined = undefined;
-
-      if (productData?.mainImage?.imageUrl && typeof productData.mainImage.imageUrl === 'string') {
-        extractedImageURL = productData.mainImage.imageUrl;
-        console.log(`[fetchAmazonProductInfoTool] Image found in mainImage.imageUrl: ${extractedImageURL}`);
-      } else if (Array.isArray(productData?.imageUrlList) && productData.imageUrlList.length > 0 && typeof productData.imageUrlList[0] === 'string') {
-        extractedImageURL = productData.imageUrlList[0];
-        console.log(`[fetchAmazonProductInfoTool] Image found in imageUrlList[0]: ${extractedImageURL}`);
-      }
-
-      if (!extractedImageURL && productData) {
-        console.warn(`[fetchAmazonProductInfoTool] No specific image URL found for ASIN ${asin} via mainImage.imageUrl or imageUrlList[0].`);
-        console.warn('[fetchAmazonProductInfoTool] ProductData keys:', Object.keys(productData).join(', '));
-        if (productData.mainImage) console.warn('[fetchAmazonProductInfoTool] MainImage object keys:', Object.keys(productData.mainImage).join(', '));
-        else console.warn('[fetchAmazonProductInfoTool] productData.mainImage is undefined or null');
-        if (productData.imageUrlList) console.warn('[fetchAmazonProductInfoTool] imageUrlList exists. Length:', productData.imageUrlList.length, 'First item type:', typeof productData.imageUrlList[0]);
-        else console.warn('[fetchAmazonProductInfoTool] productData.imageUrlList is undefined or null');
+      if (!productDescription) { // If still no description
+        productDescription = DEFAULT_DESCRIPTION;
       }
       
       const finalProductName = (typeof productName === 'string' ? productName.trim() : DEFAULT_PRODUCT_NAME).substring(0,150);
       const finalProductDescription = (typeof productDescription === 'string' ? productDescription.trim() : DEFAULT_DESCRIPTION).substring(0,1000);
       
-      let finalProductImageURL = PLACEHOLDER_IMAGE_URL;
-      if (extractedImageURL) {
-        console.log(`[fetchAmazonProductInfoTool] Attempting to validate extractedImageURL: "${extractedImageURL}"`);
-        try {
-          new URL(extractedImageURL); 
-          finalProductImageURL = extractedImageURL;
-          console.log(`[fetchAmazonProductInfoTool] Validated. finalProductImageURL set to: "${finalProductImageURL}"`);
-        } catch (e) {
-          console.warn(`[fetchAmazonProductInfoTool] Invalid image URL from Apify: "${extractedImageURL}". Error: ${e instanceof Error ? e.message : String(e)}. Falling back to placeholder.`);
-        }
-      } else {
-         console.log('[fetchAmazonProductInfoTool] No extractedImageURL was found or set, finalProductImageURL remains placeholder.');
-      }
-
-      console.log(`[fetchAmazonProductInfoTool] Fetched product details from Apify for ASIN ${asin}: Name: ${finalProductName.substring(0,50)}... Image URL: ${finalProductImageURL}`);
+      console.log(`[fetchAmazonProductInfoTool] Fetched product details from Apify for ASIN ${asin}: Name: ${finalProductName.substring(0,50)}...`);
       return {
         productName: finalProductName,
         productDescription: finalProductDescription,
-        productImageURL: finalProductImageURL,
       };
 
     } catch (error) {
@@ -204,7 +169,6 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       return {
         productName: DEFAULT_PRODUCT_NAME,
         productDescription: DEFAULT_DESCRIPTION,
-        productImageURL: PLACEHOLDER_IMAGE_URL,
       };
     }
   }

@@ -29,7 +29,6 @@ export type ComposeReviewInput = z.infer<typeof ComposeReviewInputSchema>;
 const ComposeReviewOutputSchema = z.object({
   reviewText: z.string().describe('The composed product review text.'),
   fetchedProductName: z.string().optional().describe('The product name fetched from Apify product details tool or reviews tool.'),
-  fetchedProductImageURL: z.string().url().optional().describe('The product image URL fetched from Apify product details tool.'),
 });
 
 export type ComposeReviewOutput = z.infer<typeof ComposeReviewOutputSchema>;
@@ -56,9 +55,9 @@ const composeReviewPrompt = ai.definePrompt({
   output: { 
     schema: z.object({ reviewText: z.string().describe('The composed product review text.') }),
   },
-  prompt: `You are helping me write an Amazon product review. Write the review in the first person, as if I am the one who bought and used the product.
-The review should be ready for me to copy and paste directly into Amazon.
+  prompt: `You are helping me write an Amazon product review. I need you to write the review in the first person, as if I am the one who bought and used the product. The goal is for me to be able to copy and paste this review directly into Amazon's "Create Review" page.
 
+Here is information about the product:
 Product Name: {{{productName}}}
 Product Description: {{{productDescription}}}
 
@@ -67,22 +66,27 @@ Here's my input, if I provided any:
 {{#if feedbackText}}My Key Feedback: "{{{feedbackText}}}"{{/if}}
 
 {{#if customerReviewsText}}
-I've also looked at what other customers are saying. Here are some snippets from their reviews that you can consider:
+To help you, I've also looked at what other customers are saying. Here are some snippets from their reviews that you can consider for inspiration or to address common points:
 --- Customer Review Snippets ---
 {{{customerReviewsText}}}
 --- End Customer Review Snippets ---
 {{/if}}
 
-Based on all this information (the product itself, my feedback, and what other customers said), please write a helpful and authentic-sounding review.
+Based on all this information (the product itself, my feedback, and what other customers said), please write a helpful, authentic-sounding, and engaging review.
+It should sound like a real person sharing their genuine experience with the product.
 
-- If I gave a high star rating (4-5 stars) or positive feedback, focus on what I liked.
-- If I gave a low star rating (1-2 stars) or negative feedback, explain my issues.
-- If my rating is mid-range (3 stars) or I didn't give a rating/feedback, provide a balanced perspective.
-- If I only gave a star rating, infer my general sentiment from that.
-- If I provided no feedback or rating at all, write a generally positive and informative review based on the product description and other customer reviews (if available). If there's very little info, create a concise, engaging, and generally positive review.
+- If I gave a high star rating (4-5 stars) or positive feedback, focus on what I liked and why. Be specific.
+- If I gave a low star rating (1-2 stars) or negative feedback, clearly explain the issues I encountered and my disappointment.
+- If my rating is mid-range (3 stars), or if I only provided feedback without a rating, provide a balanced perspective, highlighting both pros and cons.
+- If I only gave a star rating and no text feedback, infer my general sentiment from that rating and elaborate on potential reasons based on the product description and other reviews.
+- If I provided no feedback or rating at all, write a generally positive and informative review based on the product description and other customer reviews (if available). If there's very little info, create a concise, engaging, and generally positive review that someone might find helpful.
 
-Make it sound like a real person's experience. You can use varied writing styles, maybe even a pros/cons list if it feels natural.
-Keep it well-formatted and easy to read.
+Please:
+- Write entirely in the first person (e.g., "I found...", "For me...", "I was impressed by...").
+- Make it sound natural and conversational. Avoid overly robotic or formulaic language.
+- Ensure it's well-formatted for readability on Amazon (e.g., paragraphs, maybe bullet points for pros/cons if it feels natural for the specific review).
+- Do not include any placeholders like "[Your Name]" or instructions for me to fill in. The review should be complete and ready to paste.
+- The tone should match the star rating if provided. (e.g. enthusiastic for 5 stars, critical for 1 star).
 `,
 });
 
@@ -102,7 +106,6 @@ const composeReviewFlow = ai.defineFlow(
     let fetchedProductInfo: FetchAmazonProductInfoOutput = {
         productName: "Product (Details Fetching Failed)",
         productDescription: "No description available.",
-        productImageURL: undefined,
     };
     let fetchedApifyReviewsData: FetchAmazonReviewsApifyOutput = {
         reviews: [],
@@ -126,11 +129,11 @@ const composeReviewFlow = ai.defineFlow(
         : undefined;
 
     let finalProductName = fetchedProductInfo.productName;
-    // If product details tool returned a generic name, but reviews tool got a specific title, prefer reviews tool's title.
+
     if (GENERIC_PRODUCT_NAMES.includes(finalProductName) && fetchedApifyReviewsData.productTitle && fetchedApifyReviewsData.productTitle.trim() !== "") {
         finalProductName = fetchedApifyReviewsData.productTitle;
     }
-    // If still generic, use a very basic default.
+
     if (GENERIC_PRODUCT_NAMES.includes(finalProductName)) {
         finalProductName = "This Product";
     }
@@ -153,7 +156,6 @@ const composeReviewFlow = ai.defineFlow(
     return {
       reviewText: promptOutput.reviewText,
       fetchedProductName: finalProductName,
-      fetchedProductImageURL: fetchedProductInfo.productImageURL,
     };
   }
 );

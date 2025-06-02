@@ -5,7 +5,6 @@ import React, { useState, useEffect } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import Image from 'next/image';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,18 +24,14 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
-const API_PLACEHOLDER_IMAGE_URL = 'https://placehold.co/80x80.png';
-
 export default function ReviewForgePage() {
   const [generatedReview, setGeneratedReview] = useState<string | null>(null);
   const [fetchedProductName, setFetchedProductName] = useState<string | null>(null);
-  const [fetchedProductImageURL, setFetchedProductImageURL] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const { toast, dismiss: dismissToast } = useToast();
   const [currentYear, setCurrentYear] = useState<number | null>(null);
-  const [imageHasError, setImageHasError] = useState(false);
 
   useEffect(() => {
     setCurrentYear(new Date().getFullYear());
@@ -56,8 +51,6 @@ export default function ReviewForgePage() {
     setError(null);
     setGeneratedReview(null);
     setFetchedProductName(null);
-    setFetchedProductImageURL(null);
-    setImageHasError(false); 
 
     const aiInput: ComposeReviewInput = {
       amazonLink: data.amazonLink,
@@ -70,10 +63,6 @@ export default function ReviewForgePage() {
       setGeneratedReview(result.reviewText);
       if (result.fetchedProductName) {
         setFetchedProductName(result.fetchedProductName);
-      }
-      if (result.fetchedProductImageURL) {
-        setFetchedProductImageURL(result.fetchedProductImageURL);
-        setImageHasError(false); // Reset error state if new URL is fetched
       }
       toast({
         title: "Review Forged!",
@@ -103,9 +92,11 @@ export default function ReviewForgePage() {
           description: "Review copied to clipboard.",
         });
         setTimeout(() => {
-          dismissToast(toastId);
+          if (toastId) {
+            dismissToast(toastId);
+          }
           setIsCopied(false);
-        }, 3000); // Dismiss toast and reset button after 3 seconds
+        }, 3000);
       } catch (err) {
         console.error("Failed to copy review:", err);
         toast({
@@ -116,10 +107,6 @@ export default function ReviewForgePage() {
       }
     }
   };
-
-  const showActualImage = fetchedProductImageURL &&
-                          fetchedProductImageURL !== API_PLACEHOLDER_IMAGE_URL &&
-                          !imageHasError;
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center py-8 px-4 transition-colors duration-300">
@@ -224,7 +211,7 @@ export default function ReviewForgePage() {
           </Card>
         )}
         
-        {(generatedReview || fetchedProductName || fetchedProductImageURL) && !isLoading && (
+        {(generatedReview || fetchedProductName) && !isLoading && (
           <Card className="shadow-xl rounded-lg overflow-hidden animate-in fade-in-50 duration-500">
             <CardHeader className="bg-primary/90 p-6">
               <CardTitle className="font-headline text-3xl text-primary-foreground flex items-center">
@@ -234,28 +221,6 @@ export default function ReviewForgePage() {
             <CardContent className="p-6 md:p-8 space-y-4">
               {fetchedProductName && (
                 <div className="p-4 border rounded-lg flex items-center space-x-4 bg-card hover:border-primary/50 transition-colors">
-                  {showActualImage ? (
-                    <Image
-                      key={fetchedProductImageURL} 
-                      src={fetchedProductImageURL!}
-                      alt={fetchedProductName || "Product Image"}
-                      width={80}
-                      height={80}
-                      className="rounded-md object-cover"
-                      data-ai-hint="product photo"
-                      onError={() => {
-                        console.warn(`Image failed to load: ${fetchedProductImageURL}`);
-                        setImageHasError(true);
-                      }}
-                    />
-                  ) : (
-                    <div 
-                      className="w-[80px] h-[80px] bg-muted rounded-md flex items-center justify-center text-center text-xs text-muted-foreground p-2"
-                      data-ai-hint="product placeholder"
-                    >
-                      No Image Available
-                    </div>
-                  )}
                   <div>
                     <h3 className="font-headline text-xl font-semibold text-foreground">{fetchedProductName}</h3>
                     {form.getValues("amazonLink") && <a href={form.getValues("amazonLink")} target="_blank" rel="noopener noreferrer" className="text-sm text-accent hover:underline flex items-center"><LinkIcon size={14} className="mr-1"/>View on Amazon</a>}
