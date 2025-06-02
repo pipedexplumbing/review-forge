@@ -230,16 +230,30 @@ export default function ReviewForgePage() {
                       className="rounded-md object-cover"
                       data-ai-hint="product photo"
                       onError={(e) => {
-                        // Replace with placeholder if image fails to load
-                        const parent = e.currentTarget.parentElement;
-                        if (parent) {
-                            const placeholder = document.createElement('div');
-                            placeholder.className = 'w-[80px] h-[80px] bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground';
-                            placeholder.textContent = 'No Image';
-                            parent.replaceChild(placeholder, e.currentTarget);
+                        const target = e.currentTarget;
+                        target.onerror = null; 
+                        target.src = 'https://placehold.co/80x80.png'; 
+                        target.alt = 'Placeholder Image';
+                        const parent = target.parentElement;
+                        if (parent && parent.querySelector('.product-image-placeholder-text')) {
+                          (parent.querySelector('.product-image-placeholder-text') as HTMLElement).style.display = 'flex';
+                          target.style.display = 'none';
+                        } else if (parent && !parent.querySelector('.product-image-placeholder-text')) {
+                           const placeholderTextDiv = document.createElement('div');
+                           placeholderTextDiv.className = 'w-[80px] h-[80px] bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground product-image-placeholder-text';
+                           placeholderTextDiv.textContent = 'No Image';
+                           parent.insertBefore(placeholderTextDiv, target);
+                           target.style.display = 'none';
                         }
                        }}
                     />
+                  )}
+                   {/* Fallback div for when image fails and JS creates it, or when no image URL initially */}
+                  {(!fetchedProductImageURL || (fetchedProductImageURL && fetchedProductImageURL.includes('placehold.co'))) && (
+                    <div className="w-[80px] h-[80px] bg-muted rounded-md flex items-center justify-center text-xs text-muted-foreground product-image-placeholder-text"
+                         style={{ display: fetchedProductImageURL && !fetchedProductImageURL.includes('placehold.co') ? 'none' : 'flex' }}>
+                      No Image
+                    </div>
                   )}
                   <div>
                     <h3 className="font-headline text-xl font-semibold text-foreground">{fetchedProductName}</h3>
