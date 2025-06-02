@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label'; // Added missing import
 import { Textarea } from '@/components/ui/textarea';
 import StarRatingInput from '@/components/ui/star-rating-input';
 import { useToast } from '@/hooks/use-toast';
@@ -78,7 +79,7 @@ export default function ReviewForgePage() {
         localStorage.setItem(LOCAL_STORAGE_AUTH_KEY, JSON.stringify({ token: 'loggedIn', expiry: expiryTimestamp }));
         setIsAuthenticated(true);
         setLoginError(null);
-        setPasswordInput(""); 
+        setPasswordInput("");
       } catch (err) {
         console.error("Error saving auth to localStorage", err);
         setLoginError("Could not save login session. Please try again.");
@@ -158,13 +159,12 @@ export default function ReviewForgePage() {
           description: "Review copied to clipboard.",
         });
         setTimeout(() => {
-          if (toastId) { // Check if toastId is defined
+          if (toastId) {
             dismissToast(toastId);
           }
           setIsCopied(false);
         }, 3000);
       } catch (err) {
-        console.error("Failed to copy review:", err);
         toast({
           title: "Copy Failed",
           description: "Could not copy review to clipboard.",
@@ -372,5 +372,6 @@ export default function ReviewForgePage() {
     </div>
   );
 }
+    
 
     
