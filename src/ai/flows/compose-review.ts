@@ -28,6 +28,7 @@ export type ComposeReviewInput = z.infer<typeof ComposeReviewInputSchema>;
 
 const ComposeReviewOutputSchema = z.object({
   reviewText: z.string().describe('The composed product review text.'),
+  reviewTitle: z.string().describe('The composed product review title.'),
   fetchedProductName: z.string().optional().describe('The product name fetched from Apify product details tool or reviews tool.'),
 });
 
@@ -52,10 +53,15 @@ const composeReviewPrompt = ai.definePrompt({
   input: {
     schema: ComposeReviewPromptInputSchema,
   },
-  output: { 
-    schema: z.object({ reviewText: z.string().describe('The composed product review text.') }),
+  output: {
+    schema: z.object({
+      reviewTitle: z.string().describe('A concise and catchy title for the review, typically 5-15 words.'),
+      reviewText: z.string().describe('The composed product review text.'),
+    }),
   },
-  prompt: `You are helping me write an Amazon product review. I need you to write the review in the first person, as if I am the one who bought and used the product. The goal is for me to be able to copy and paste this review directly into Amazon's "Create Review" page.
+  prompt: `You are helping me write an Amazon product review. I need you to write the review TEXT in the first person, as if I am the one who bought and used the product.
+Additionally, create a concise and catchy TITLE for this review. The title should be suitable for an Amazon review title field, generally between 5 to 15 words.
+The goal is for me to be able to copy and paste both the title and the review text directly into Amazon's "Create Review" page.
 
 Here is information about the product:
 Product Name: {{{productName}}}
@@ -72,21 +78,28 @@ To help you, I've also looked at what other customers are saying. Here are some 
 --- End Customer Review Snippets ---
 {{/if}}
 
-Based on all this information (the product itself, my feedback, and what other customers said), please write a helpful, authentic-sounding, and engaging review.
-It should sound like a real person sharing their genuine experience with the product.
+Based on all this information (the product itself, my feedback, and what other customers said), please generate the review TITLE and TEXT.
 
+For the review TEXT:
+- It should sound like a real person sharing their genuine experience with the product.
 - If I gave a high star rating (4-5 stars) or positive feedback, focus on what I liked and why. Be specific.
 - If I gave a low star rating (1-2 stars) or negative feedback, clearly explain the issues I encountered and my disappointment.
 - If my rating is mid-range (3 stars), or if I only provided feedback without a rating, provide a balanced perspective, highlighting both pros and cons.
 - If I only gave a star rating and no text feedback, infer my general sentiment from that rating and elaborate on potential reasons based on the product description and other reviews.
 - If I provided no feedback or rating at all, write a generally positive and informative review based on the product description and other customer reviews (if available). If there's very little info, create a concise, engaging, and generally positive review that someone might find helpful.
 
-Please:
-- Write entirely in the first person (e.g., "I found...", "For me...", "I was impressed by...").
-- Make it sound natural and conversational. Avoid overly robotic or formulaic language.
-- Ensure it's well-formatted for readability on Amazon (e.g., paragraphs, maybe bullet points for pros/cons if it feels natural for the specific review).
-- Do not include any placeholders like "[Your Name]" or instructions for me to fill in. The review should be complete and ready to paste.
-- The tone should match the star rating if provided. (e.g. enthusiastic for 5 stars, critical for 1 star).
+Please ensure the review TEXT:
+- Is written entirely in the first person (e.g., "I found...", "For me...", "I was impressed by...").
+- Sounds natural and conversational. Avoid overly robotic or formulaic language.
+- Is well-formatted for readability on Amazon (e.g., paragraphs, maybe bullet points for pros/cons if it feels natural for the specific review).
+- Does not include any placeholders like "[Your Name]" or instructions for me to fill in.
+
+Your entire response MUST be a single JSON object with two keys: "reviewTitle" and "reviewText". For example:
+{
+  "reviewTitle": "Excellent Product, Highly Recommend!",
+  "reviewText": "I've been using this product for a week now and I'm very impressed..."
+}
+Do not include any other text, explanations, or markdown formatting like \`\`\`json before or after this JSON object.
 `,
 });
 
@@ -149,13 +162,15 @@ const composeReviewFlow = ai.defineFlow(
 
     const {output: promptOutput} = await composeReviewPrompt(promptInput);
     
-    if (!promptOutput) {
-        throw new Error("Failed to generate review text from prompt.");
+    if (!promptOutput || !promptOutput.reviewText || !promptOutput.reviewTitle) {
+        throw new Error("Failed to generate review text and title from prompt. Output might be missing expected fields.");
     }
 
     return {
+      reviewTitle: promptOutput.reviewTitle,
       reviewText: promptOutput.reviewText,
       fetchedProductName: finalProductName,
     };
   }
 );
+

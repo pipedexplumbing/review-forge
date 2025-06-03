@@ -10,12 +10,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label'; // Added missing import
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import StarRatingInput from '@/components/ui/star-rating-input';
 import { useToast } from '@/hooks/use-toast';
 import { composeReview, type ComposeReviewInput, type ComposeReviewOutput } from '@/ai/flows/compose-review';
-import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, PencilRuler, LogOut, KeyRound } from 'lucide-react';
+import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, PencilRuler, LogOut, KeyRound, Highlighter } from 'lucide-react';
 
 // --- Authentication Constants ---
 const HARDCODED_PASSWORD = "amazon";
@@ -40,10 +40,12 @@ export default function ReviewForgePage() {
 
   // --- App Specific State (Review Forge) ---
   const [generatedReview, setGeneratedReview] = useState<string | null>(null);
+  const [generatedReviewTitle, setGeneratedReviewTitle] = useState<string | null>(null);
   const [fetchedProductName, setFetchedProductName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isCopied, setIsCopied] = useState(false);
+  const [isReviewCopied, setIsReviewCopied] = useState(false);
+  const [isTitleCopied, setIsTitleCopied] = useState(false);
   const { toast, dismiss: dismissToast } = useToast();
   const [currentYear, setCurrentYear] = useState<number | null>(null);
   // --- End App Specific State ---
@@ -62,7 +64,7 @@ export default function ReviewForgePage() {
         if (authData && authData.token === 'loggedIn' && authData.expiry && new Date().getTime() < authData.expiry) {
           setIsAuthenticated(true);
         } else {
-          localStorage.removeItem(LOCAL_STORAGE_AUTH_KEY); // Clear invalid/expired token
+          localStorage.removeItem(LOCAL_STORAGE_AUTH_KEY); 
         }
       }
     } catch (e) {
@@ -97,9 +99,10 @@ export default function ReviewForgePage() {
     }
     setIsAuthenticated(false);
     setGeneratedReview(null);
+    setGeneratedReviewTitle(null);
     setFetchedProductName(null);
     setError(null);
-    // Potentially reset other app states if needed
+    reviewForm.reset();
   };
   // --- End Authentication Effects and Handlers ---
 
@@ -117,6 +120,7 @@ export default function ReviewForgePage() {
     setIsLoading(true);
     setError(null);
     setGeneratedReview(null);
+    setGeneratedReviewTitle(null);
     setFetchedProductName(null);
 
     const aiInput: ComposeReviewInput = {
@@ -128,12 +132,13 @@ export default function ReviewForgePage() {
     try {
       const result: ComposeReviewOutput = await composeReview(aiInput);
       setGeneratedReview(result.reviewText);
+      setGeneratedReviewTitle(result.reviewTitle);
       if (result.fetchedProductName) {
         setFetchedProductName(result.fetchedProductName);
       }
       toast({
         title: "Review Forged!",
-        description: "Your AI-crafted review is ready.",
+        description: "Your AI-crafted review title and body are ready.",
       });
     } catch (e) {
       console.error("Error composing review:", e);
@@ -153,21 +158,42 @@ export default function ReviewForgePage() {
     if (generatedReview) {
       try {
         await navigator.clipboard.writeText(generatedReview);
-        setIsCopied(true);
+        setIsReviewCopied(true);
         const { id: toastId } = toast({
           title: "Copied!",
-          description: "Review copied to clipboard.",
+          description: "Review body copied to clipboard.",
         });
         setTimeout(() => {
-          if (toastId) {
-            dismissToast(toastId);
-          }
-          setIsCopied(false);
+          if (toastId) dismissToast(toastId);
+          setIsReviewCopied(false);
         }, 3000);
       } catch (err) {
         toast({
           title: "Copy Failed",
-          description: "Could not copy review to clipboard.",
+          description: "Could not copy review body to clipboard.",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const handleCopyTitle = async () => {
+    if (generatedReviewTitle) {
+      try {
+        await navigator.clipboard.writeText(generatedReviewTitle);
+        setIsTitleCopied(true);
+        const { id: toastId } = toast({
+          title: "Title Copied!",
+          description: "Review title copied to clipboard.",
+        });
+        setTimeout(() => {
+          if (toastId) dismissToast(toastId);
+          setIsTitleCopied(false);
+        }, 3000);
+      } catch (err) {
+        toast({
+          title: "Copy Failed",
+          description: "Could not copy review title.",
           variant: "destructive",
         });
       }
@@ -189,7 +215,7 @@ export default function ReviewForgePage() {
               Please login to continue.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-6">
             <form onSubmit={handleLogin} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
@@ -325,42 +351,83 @@ export default function ReviewForgePage() {
             <CardHeader>
               <CardTitle className="font-headline text-xl">Error</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-6">
               <p className="font-body">{error}</p>
             </CardContent>
           </Card>
         )}
         
-        {(generatedReview || fetchedProductName) && !isLoading && (
+        {fetchedProductName && !isLoading && (
+             <Card className="shadow-xl rounded-lg overflow-hidden animate-in fade-in-50 duration-500">
+                <CardHeader className="bg-card/95 p-4">
+                    <CardTitle className="font-headline text-lg text-card-foreground">
+                        Product: {fetchedProductName}
+                    </CardTitle>
+                    {reviewForm.getValues("amazonLink") && 
+                        <a 
+                            href={reviewForm.getValues("amazonLink")} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-sm text-accent hover:underline flex items-center pt-1"
+                        >
+                            <LinkIcon size={14} className="mr-1"/>View on Amazon
+                        </a>
+                    }
+                </CardHeader>
+            </Card>
+        )}
+
+        {generatedReviewTitle && !isLoading && (
           <Card className="shadow-xl rounded-lg overflow-hidden animate-in fade-in-50 duration-500">
-            <CardHeader className="bg-primary/90 p-6">
-              <CardTitle className="font-headline text-3xl text-primary-foreground flex items-center">
-                <PencilRuler className="mr-3 h-7 w-7" /> Your Forged Review
+            <CardHeader className="bg-secondary/80 p-6">
+              <CardTitle className="font-headline text-2xl text-secondary-foreground flex items-center">
+                <Highlighter className="mr-3 h-7 w-7" /> Your Forged Review Title
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6 md:p-8 space-y-4">
-              {fetchedProductName && (
-                 <div className="p-4 border rounded-lg flex items-center space-x-4 bg-card hover:border-primary/50 transition-colors">
-                    <div>
-                        <h3 className="font-headline text-xl font-semibold text-foreground">{fetchedProductName}</h3>
-                        {reviewForm.getValues("amazonLink") && <a href={reviewForm.getValues("amazonLink")} target="_blank" rel="noopener noreferrer" className="text-sm text-accent hover:underline flex items-center"><LinkIcon size={14} className="mr-1"/>View on Amazon</a>}
-                    </div>
-                </div>
-              )}
-              {generatedReview && (
-                <div className="prose prose-lg font-body max-w-none text-foreground whitespace-pre-wrap bg-background/50 p-4 rounded-md border border-border">
-                  {generatedReview}
-                </div>
-              )}
+              <div className="prose font-body max-w-none text-foreground bg-background/50 p-4 rounded-md border border-border">
+                {generatedReviewTitle}
+              </div>
             </CardContent>
-            {generatedReview && (
-              <CardFooter className="p-6 border-t">
-                <Button onClick={handleCopyReview} variant="outline" className="w-full text-lg py-6 font-headline transition-transform hover:scale-105" size="lg" disabled={isCopied}>
-                  {isCopied ? <Check className="mr-2 h-5 w-5 text-green-500" /> : <Copy className="mr-2 h-5 w-5" />}
-                  {isCopied ? 'Copied!' : 'Copy Review Text'}
+            <CardFooter className="p-6 border-t">
+                <Button 
+                    onClick={handleCopyTitle} 
+                    variant="outline" 
+                    className="w-full text-lg py-6 font-headline transition-transform hover:scale-105" 
+                    size="lg" 
+                    disabled={isTitleCopied}
+                >
+                  {isTitleCopied ? <Check className="mr-2 h-5 w-5 text-green-500" /> : <Copy className="mr-2 h-5 w-5" />}
+                  {isTitleCopied ? 'Title Copied!' : 'Copy Review Title'}
                 </Button>
-              </CardFooter>
-            )}
+            </CardFooter>
+          </Card>
+        )}
+
+        {generatedReview && !isLoading && (
+          <Card className="shadow-xl rounded-lg overflow-hidden animate-in fade-in-50 duration-500">
+            <CardHeader className="bg-primary/90 p-6">
+              <CardTitle className="font-headline text-2xl text-primary-foreground flex items-center">
+                <PencilRuler className="mr-3 h-7 w-7" /> Your Forged Review Body
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 md:p-8 space-y-4">
+              <div className="prose prose-lg font-body max-w-none text-foreground whitespace-pre-wrap bg-background/50 p-4 rounded-md border border-border">
+                {generatedReview}
+              </div>
+            </CardContent>
+            <CardFooter className="p-6 border-t">
+              <Button 
+                onClick={handleCopyReview} 
+                variant="outline" 
+                className="w-full text-lg py-6 font-headline transition-transform hover:scale-105" 
+                size="lg" 
+                disabled={isReviewCopied}
+              >
+                {isReviewCopied ? <Check className="mr-2 h-5 w-5 text-green-500" /> : <Copy className="mr-2 h-5 w-5" />}
+                {isReviewCopied ? 'Copied!' : 'Copy Review Body'}
+              </Button>
+            </CardFooter>
           </Card>
         )}
       </div>
@@ -372,6 +439,3 @@ export default function ReviewForgePage() {
     </div>
   );
 }
-    
-
-    
