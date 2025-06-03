@@ -12,7 +12,7 @@ h1, h2, h3, h4, h5, h6 {
 
 @layer base {
   :root {
-    --background: 240 67% 94%; /* Light Lavender #E6E6FA - Default light theme (can be Firebase light too) */
+    --background: 240 67% 94%; /* Light Lavender #E6E6FA - Default light theme */
     --foreground: 275 70% 20%; /* Dark Indigo for text - Default light theme */
     --card: 240 60% 98%;
     --card-foreground: 275 70% 20%;
@@ -50,40 +50,40 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .dark {
-    --background: 220 5% 13%; /* Firebase Dark: Dark Grey/Blue */
-    --foreground: 210 17% 91%; /* Firebase Dark: Light Grey */
-    --card: 220 5% 18%; /* Firebase Dark: Card Background */
-    --card-foreground: 210 17% 91%;
-    --popover: 220 5% 18%;
-    --popover-foreground: 210 17% 91%;
-    --primary: 200 98% 55%; /* Firebase Dark: Firebase Blue (brighter for dark mode) */
-    --primary-foreground: 0 0% 100%; /* White for contrast on blue */
-    --secondary: 200 80% 45%; /* Firebase Dark: Muted Blue */
-    --secondary-foreground: 0 0% 100%;
-    --muted: 220 5% 25%; /* Firebase Dark: Muted Dark Grey/Blue */
-    --muted-foreground: 210 15% 65%; /* Firebase Dark: Muted Light Grey */
-    --accent: 45 100% 58%; /* Firebase Dark: Firebase Yellow/Orange */
-    --accent-foreground: 240 10% 10%; /* Dark text for contrast on yellow/orange */
+    --background: 220 10% 10%; /* Darker, more neutral blue-grey */
+    --foreground: 210 20% 90%; /* Brighter light grey for text */
+    --card: 220 10% 15%; /* Card background */
+    --card-foreground: 210 20% 90%;
+    --popover: 220 10% 15%; /* Popover background */
+    --popover-foreground: 210 20% 90%;
+    --primary: 35 95% 55%; /* Vibrant Orange for primary actions */
+    --primary-foreground: 210 40% 98%; /* Very light text for contrast on orange */
+    --secondary: 215 15% 25%; /* Muted dark grey-blue for secondary elements */
+    --secondary-foreground: 210 20% 85%;
+    --muted: 220 10% 20%; /* Muted Dark Grey/Blue */
+    --muted-foreground: 210 15% 65%; /* Muted Light Grey */
+    --accent: 30 100% 60%; /* Clear Orange for accent (can be same as primary or a variation) */
+    --accent-foreground: 210 40% 98%; /* Dark text for contrast on orange */
     --destructive: 0 70% 55%; /* Red for destructive actions */
     --destructive-foreground: 0 0% 100%;
-    --border: 220 5% 22%; /* Firebase Dark: Subtle Border, slightly lighter than card for visibility */
-    --input: 220 5% 16%; /* Firebase Dark: Input Background, slightly darker than card */
-    --ring: 45 100% 58%; /* Firebase Dark: Accent for focus rings */
+    --border: 220 10% 25%; /* Subtle Border */
+    --input: 220 10% 18%; /* Input Background */
+    --ring: 35 95% 55%; /* Orange for focus rings */
 
-    --chart-1: 200 98% 60%;
-    --chart-2: 45 100% 65%;
-    --chart-3: 200 80% 50%;
-    --chart-4: 45 90% 60%;
-    --chart-5: 200 70% 55%;
+    --chart-1: 35 90% 60%; /* Orange */
+    --chart-2: 25 85% 55%; /* Lighter Orange/Yellow */
+    --chart-3: 210 15% 45%; /* Muted Blue-Grey */
+    --chart-4: 45 90% 50%; /* Yellow */
+    --chart-5: 215 20% 35%; /* Darker Muted Blue-Grey */
 
-    --sidebar-background: 220 8% 10%; /* Even darker for sidebar */
-    --sidebar-foreground: 210 17% 85%;
-    --sidebar-primary: 200 98% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 45 100% 58%;
-    --sidebar-accent-foreground: 240 10% 10%;
-    --sidebar-border: 220 5% 15%; /* Darker border for sidebar */
-    --sidebar-ring: 45 100% 58%;
+    --sidebar-background: 220 10% 8%; /* Even darker for sidebar */
+    --sidebar-foreground: 210 20% 80%;
+    --sidebar-primary: 35 95% 55%; /* Orange in sidebar */
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 25 90% 60%; /* Lighter orange/yellow for sidebar accent */
+    --sidebar-accent-foreground: 220 10% 10%;
+    --sidebar-border: 220 10% 12%;
+    --sidebar-ring: 35 95% 55%;
   }
 }
 
