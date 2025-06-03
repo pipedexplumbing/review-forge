@@ -1,12 +1,12 @@
 
 'use server';
 /**
- * @fileOverview AI Tool for fetching product information (name, description) from an Amazon product link
+ * @fileOverview AI Tool for fetching product information (name, description, image) from an Amazon product link
  * using the Apify actor "axesso_data~amazon-product-details-scraper".
  *
  * - fetchAmazonProductInfoTool - An AI tool that calls an Apify actor to get product details.
  * - FetchAmazonProductInfoInput - Input schema for the tool (Amazon product URL).
- * - FetchAmazonProductInfoOutput - Output schema for the tool (product name, description).
+ * - FetchAmazonProductInfoOutput - Output schema for the tool (product name, description, image URL).
  */
 
 import { ai } from '@/ai/genkit';
@@ -25,6 +25,7 @@ const FetchAmazonProductInfoOutputSchema = z.object({
   productDescription: z
     .string()
     .describe('A brief description or key features of the product.'),
+  // productImageURL: z.string().url().optional().describe('The URL of the main product image, if available.')
 });
 export type FetchAmazonProductInfoOutput = z.infer<typeof FetchAmazonProductInfoOutputSchema>;
 
@@ -38,27 +39,45 @@ function extractAsinAndDomain(productURL: string): { asin: string | null; domain
     const url = new URL(productURL);
     const hostname = url.hostname;
 
-    const asinMatch = productURL.match(/\/(?:dp|gp\/product|-)\/([A-Z0-9]{10})/);
-    const asin = asinMatch ? asinMatch[1] : null;
+    let asin: string | null = null;
+
+    // Attempt 1: Extract ASIN from query parameter (e.g., /review/create-review/?asin=B0F4KZ6DRY)
+    const asinFromQuery = url.searchParams.get('asin');
+    if (asinFromQuery && /^[A-Z0-9]{10}$/.test(asinFromQuery)) {
+      asin = asinFromQuery;
+      // console.log(`[fetchAmazonProductInfoTool - extractAsinAndDomain] Extracted ASIN from query parameter: ${asin}`);
+    }
+
+    // Attempt 2: Extract ASIN from path if not found in query (e.g., /dp/ASIN, /gp/product/ASIN)
+    if (!asin) {
+      const asinMatch = productURL.match(/\/(?:dp|gp\/product|-)\/([A-Z0-9]{10})/);
+      if (asinMatch) {
+        asin = asinMatch[1];
+        // console.log(`[fetchAmazonProductInfoTool - extractAsinAndDomain] Extracted ASIN from path: ${asin}`);
+      }
+    }
 
     let domainCode: string | null = null;
     if (hostname.includes('amazon.')) {
       const parts = hostname.split('amazon.');
       if (parts.length > 1) {
         domainCode = parts[1];
+        // Normalize domain code (e.g., www.amazon.com -> com, amazon.co.uk -> co.uk)
         if (domainCode.startsWith('www.')) {
             domainCode = domainCode.substring(4);
         }
-        if (domainCode.includes('/')) {
+        if (domainCode.includes('/')) { // remove any path
             domainCode = domainCode.split('/')[0];
         }
       }
     }
-    if (!asin) console.warn(`[extractAsinAndDomain] Could not extract ASIN from URL: ${productURL}`);
-    if (!domainCode) console.warn(`[extractAsinAndDomain] Could not extract domainCode from URL: ${productURL}`);
+
+    if (!asin) console.warn(`[fetchAmazonProductInfoTool - extractAsinAndDomain] Could not extract ASIN from URL (checked path and 'asin' query param): ${productURL}`);
+    if (!domainCode) console.warn(`[fetchAmazonProductInfoTool - extractAsinAndDomain] Could not extract domainCode from URL: ${productURL}`);
+    
     return { asin, domainCode };
   } catch (error) {
-    console.error('[extractAsinAndDomain] Error parsing Amazon URL:', error);
+    console.error('[fetchAmazonProductInfoTool - extractAsinAndDomain] Error parsing Amazon URL:', error);
     return { asin: null, domainCode: null };
   }
 }
@@ -74,7 +93,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
   async ({ productURL }): Promise<FetchAmazonProductInfoOutput> => {
     const apifyToken = process.env.APIFY_API_TOKEN;
     if (!apifyToken) {
-      console.error('[fetchAmazonProductInfoTool] APIFY_API_TOKEN environment variable is not set.');
+      console.error('[fetchAmazonProductInfoTool] APIFY_API_TOKEN environment variable is not set. Returning default info.');
       return {
         productName: DEFAULT_PRODUCT_NAME,
         productDescription: DEFAULT_DESCRIPTION,
@@ -103,7 +122,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       ],
     };
 
-    console.log(`[fetchAmazonProductInfoTool] Calling Apify actor ${actorId} for ASIN ${asin}, domain ${domainCode}`);
+    // console.log(`[fetchAmazonProductInfoTool] Calling Apify actor ${actorId} for ASIN ${asin}, domain ${domainCode}`);
 
     try {
       const response = await fetch(apifyApiUrl, {
@@ -117,7 +136,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       if (!response.ok) {
         const errorBody = await response.text().catch(() => "Could not read error body");
         console.error(
-          `[fetchAmazonProductInfoTool] Apify API request failed for ASIN ${asin} (${domainCode}) on URL ${productURL}: ${response.status} ${response.statusText}. Body: ${errorBody.substring(0, 500)}`
+          `[fetchAmazonProductInfoTool] Apify API request failed for ASIN ${asin} (${domainCode}) on URL ${productURL}: ${response.status} ${response.statusText}. Body: ${errorBody.substring(0, 500)}. Returning default info.`
         );
         return {
           productName: DEFAULT_PRODUCT_NAME,
@@ -127,23 +146,23 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
 
       const datasetItems: unknown = await response.json();
 
-      if (!Array.isArray(datasetItems) || datasetItems.length === 0) {
-        console.warn(`[fetchAmazonProductInfoTool] Apify API for ASIN ${asin} returned no items or unexpected format:`, datasetItems);
+      if (!Array.isArray(datasetItems) || datasetItems.length === 0 || typeof datasetItems[0] !== 'object' || datasetItems[0] === null) {
+        // console.warn(`[fetchAmazonProductInfoTool] Apify API for ASIN ${asin} returned no items or unexpected format. Dataset:`, JSON.stringify(datasetItems, null, 2).substring(0,500));
         return {
           productName: DEFAULT_PRODUCT_NAME,
           productDescription: DEFAULT_DESCRIPTION,
         };
       }
 
-      const productData = datasetItems[0] as any; // Cast to any to access potential fields
-      console.log(`[fetchAmazonProductInfoTool] Received productData for ASIN ${asin}. Attempting to extract details.`);
-
+      const productData = datasetItems[0] as any;
+      // console.log(`[fetchAmazonProductInfoTool] Received productData for ASIN ${asin}. Attempting to extract details.`);
+      
       const productName = productData?.title || DEFAULT_PRODUCT_NAME;
       
       let productDescription = productData?.productDescription || "";
       if (Array.isArray(productData?.features) && productData.features.length > 0) {
         const featuresText = productData.features.join('. ');
-        if (productDescription.length < featuresText.length) {
+        if (productDescription && productDescription.length < 20 && featuresText.length > productDescription.length) { // Prioritize longer features if desc is too short
           productDescription = featuresText;
         } else if (productDescription) {
           productDescription += '. ' + featuresText;
@@ -151,14 +170,18 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
           productDescription = featuresText;
         }
       }
-      if (!productDescription) { // If still no description
+       if (!productDescription && productData?.aboutProduct && Array.isArray(productData.aboutProduct)) {
+        productDescription = productData.aboutProduct.map((item: any) => item.value || "").join(". ");
+      }
+
+      if (!productDescription) {
         productDescription = DEFAULT_DESCRIPTION;
       }
       
-      const finalProductName = (typeof productName === 'string' ? productName.trim() : DEFAULT_PRODUCT_NAME).substring(0,150);
-      const finalProductDescription = (typeof productDescription === 'string' ? productDescription.trim() : DEFAULT_DESCRIPTION).substring(0,1000);
+      const finalProductName = (typeof productName === 'string' ? productName.trim() : DEFAULT_PRODUCT_NAME).substring(0,200);
+      const finalProductDescription = (typeof productDescription === 'string' ? productDescription.trim() : DEFAULT_DESCRIPTION).substring(0,1500);
       
-      console.log(`[fetchAmazonProductInfoTool] Fetched product details from Apify for ASIN ${asin}: Name: ${finalProductName.substring(0,50)}...`);
+      // console.log(`[fetchAmazonProductInfoTool] Extracted product details from Apify for ASIN ${asin}: Name: ${finalProductName.substring(0,50)}...`);
       return {
         productName: finalProductName,
         productDescription: finalProductDescription,
