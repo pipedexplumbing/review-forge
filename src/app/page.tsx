@@ -56,7 +56,6 @@ export default function ReviewForgePage() {
 
   // --- Authentication Effects and Handlers ---
   useEffect(() => {
-    // Check auth on mount
     try {
       const authDataString = localStorage.getItem(LOCAL_STORAGE_AUTH_KEY);
       if (authDataString) {
@@ -204,40 +203,40 @@ export default function ReviewForgePage() {
   // --- Conditional Rendering: Login Page or App Page ---
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center py-8 px-4">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center py-12 px-4">
         <Card className="w-full max-w-md shadow-xl rounded-lg">
-          <CardHeader className="text-center">
-            <div className="inline-flex items-center justify-center p-3 bg-primary text-primary-foreground rounded-full mb-4 shadow-lg mx-auto">
-              <PencilRuler size={36} />
+          <CardHeader className="text-center p-8">
+            <div className="inline-flex items-center justify-center p-4 bg-primary text-primary-foreground rounded-full mb-6 shadow-lg mx-auto">
+              <PencilRuler size={48} />
             </div>
-            <CardTitle className="font-headline text-3xl text-primary">Review Forge</CardTitle>
-            <CardDescription className="font-body text-muted-foreground pt-1">
+            <CardTitle className="font-headline text-4xl text-primary">Review Forge</CardTitle>
+            <CardDescription className="font-body text-muted-foreground pt-2 text-md">
               Please login to continue.
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-6 pt-2">
             <form onSubmit={handleLogin} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password" className="text-md font-semibold">Password</Label>
                 <Input
                   id="password"
                   type="password"
                   placeholder="Enter password"
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
-                  className="text-base"
+                  className="text-base h-11"
                 />
               </div>
               {loginError && <p className="text-sm text-destructive">{loginError}</p>}
-              <Button type="submit" className="w-full text-lg py-3 font-headline">
+              <Button type="submit" className="w-full text-lg py-3 font-headline font-semibold" size="lg">
                 <KeyRound className="mr-2 h-5 w-5" />
                 Login
               </Button>
             </form>
           </CardContent>
         </Card>
-        <footer className="mt-12 text-center">
-          <p className="text-sm text-muted-foreground font-body">
+        <footer className="mt-16 text-center">
+          <p className="text-base text-muted-foreground font-body">
             &copy; {currentYear || ''} Review Forge.
           </p>
       </footer>
@@ -247,49 +246,49 @@ export default function ReviewForgePage() {
 
   // --- Authenticated App View ---
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center py-8 px-4 transition-colors duration-300">
-      <div className="w-full max-w-3xl flex justify-between items-center mb-6">
+    <div className="min-h-screen bg-background flex flex-col items-center py-10 px-4 transition-colors duration-300">
+      <div className="w-full max-w-3xl flex justify-between items-center mb-8">
         <div></div> {/* Spacer */}
-        <Button onClick={handleLogout} variant="outline" size="sm" className="font-headline">
+        <Button onClick={handleLogout} variant="outline" size="md" className="font-headline font-semibold">
           <LogOut className="mr-2 h-4 w-4" />
           Logout
         </Button>
       </div>
       
-      <header className="mb-10 text-center">
-        <div className="inline-flex items-center justify-center p-3 bg-primary text-primary-foreground rounded-full mb-4 shadow-lg">
-           <PencilRuler size={48} />
+      <header className="mb-12 text-center">
+        <div className="inline-flex items-center justify-center p-4 bg-primary text-primary-foreground rounded-full mb-6 shadow-lg">
+           <PencilRuler size={64} />
         </div>
-        <h1 className="font-headline text-5xl md:text-6xl font-bold text-primary tracking-tight">
+        <h1 className="font-headline text-6xl md:text-7xl font-bold text-primary tracking-tight mt-2">
           Review Forge
         </h1>
-        <p className="font-body text-muted-foreground mt-3 text-lg md:text-xl max-w-2xl mx-auto">
+        <p className="font-body text-muted-foreground mt-4 text-xl md:text-2xl max-w-2xl mx-auto">
           Transform your thoughts into polished Amazon reviews with the power of AI. Just provide an Amazon link and optionally your rating and feedback.
         </p>
       </header>
 
-      <div className="w-full max-w-3xl space-y-8">
+      <div className="w-full max-w-3xl space-y-10">
         <Card className="shadow-xl rounded-lg overflow-hidden transition-all hover:shadow-primary/20">
-          <CardHeader className="bg-primary/90 p-6">
-            <CardTitle className="font-headline text-3xl text-primary-foreground flex items-center">
-              <Sparkles className="mr-3 h-7 w-7" />
+          <CardHeader className="bg-primary/90 p-6 md:p-8">
+            <CardTitle className="font-headline text-4xl text-primary-foreground flex items-center">
+              <Sparkles className="mr-3 h-8 w-8" />
               Craft Your Review
             </CardTitle>
-            <CardDescription className="font-body text-primary-foreground/80 pt-1">
+            <CardDescription className="font-body text-primary-foreground/80 pt-2 text-md">
               Fill in the details below to generate your review.
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6 md:p-8">
             <Form {...reviewForm}>
-              <form onSubmit={reviewForm.handleSubmit(onReviewSubmit)} className="space-y-6">
+              <form onSubmit={reviewForm.handleSubmit(onReviewSubmit)} className="space-y-8">
                 <FormField
                   control={reviewForm.control}
                   name="amazonLink"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-headline text-lg text-foreground">Amazon Product Link</FormLabel>
+                      <FormLabel className="font-headline text-xl font-semibold text-foreground mb-2 block">Amazon Product Link</FormLabel>
                       <FormControl>
-                        <Input type="url" placeholder="https://amazon.com/dp/..." {...field} className="text-base" disabled={isLoading}/>
+                        <Input type="url" placeholder="https://amazon.com/dp/..." {...field} className="text-base h-12" disabled={isLoading}/>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -301,9 +300,9 @@ export default function ReviewForgePage() {
                   name="starRating"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-headline text-lg text-foreground">Your Rating (Optional)</FormLabel>
+                      <FormLabel className="font-headline text-xl font-semibold text-foreground mb-2 block">Your Rating (Optional)</FormLabel>
                       <FormControl>
-                        <StarRatingInput value={field.value || 0} onChange={field.onChange} disabled={isLoading} />
+                        <StarRatingInput value={field.value || 0} onChange={field.onChange} disabled={isLoading} size={36} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -314,13 +313,13 @@ export default function ReviewForgePage() {
                   name="feedbackText"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="font-headline text-lg text-foreground">Your Key Feedback (Optional)</FormLabel>
+                      <FormLabel className="font-headline text-xl font-semibold text-foreground mb-2 block">Your Key Feedback (Optional)</FormLabel>
                       <FormControl>
                         <Textarea
                           placeholder="What did you like or dislike? e.g., 'Loved the battery life, but it's a bit bulky.'"
                           {...field}
-                          rows={4}
-                          className="text-base resize-none"
+                          rows={5}
+                          className="text-base resize-none p-3"
                           disabled={isLoading}
                         />
                       </FormControl>
@@ -328,15 +327,20 @@ export default function ReviewForgePage() {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full text-lg py-6 font-headline transition-transform hover:scale-105" disabled={isLoading} size="lg">
+                <Button 
+                    type="submit" 
+                    className="w-full text-xl py-4 font-headline font-bold transition-transform hover:scale-[1.03]" 
+                    disabled={isLoading} 
+                    size="lg"
+                >
                   {isLoading ? (
                     <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      <Loader2 className="mr-3 h-6 w-6 animate-spin" />
                       Forging...
                     </>
                   ) : (
                     <>
-                      <Sparkles className="mr-2 h-5 w-5" />
+                      <Sparkles className="mr-3 h-6 w-6" />
                       Forge My Review
                     </>
                   )}
@@ -359,8 +363,8 @@ export default function ReviewForgePage() {
         
         {fetchedProductName && !isLoading && (
              <Card className="shadow-xl rounded-lg overflow-hidden animate-in fade-in-50 duration-500">
-                <CardHeader className="bg-card/95 p-4">
-                    <CardTitle className="font-headline text-lg text-card-foreground">
+                <CardHeader className="bg-muted/50 p-4">
+                    <CardTitle className="font-headline text-lg text-foreground">
                         Product: {fetchedProductName}
                     </CardTitle>
                     {reviewForm.getValues("amazonLink") && 
@@ -393,7 +397,7 @@ export default function ReviewForgePage() {
                 <Button 
                     onClick={handleCopyTitle} 
                     variant="outline" 
-                    className="w-full text-lg py-6 font-headline transition-transform hover:scale-105" 
+                    className="w-full text-lg py-3 font-headline font-semibold transition-transform hover:scale-[1.03]" 
                     size="lg" 
                     disabled={isTitleCopied}
                 >
@@ -420,7 +424,7 @@ export default function ReviewForgePage() {
               <Button 
                 onClick={handleCopyReview} 
                 variant="outline" 
-                className="w-full text-lg py-6 font-headline transition-transform hover:scale-105" 
+                className="w-full text-lg py-3 font-headline font-semibold transition-transform hover:scale-[1.03]" 
                 size="lg" 
                 disabled={isReviewCopied}
               >
@@ -431,8 +435,8 @@ export default function ReviewForgePage() {
           </Card>
         )}
       </div>
-      <footer className="mt-12 text-center">
-        <p className="text-sm text-muted-foreground font-body">
+      <footer className="mt-16 text-center">
+        <p className="text-base text-muted-foreground font-body">
           &copy; {currentYear || ''} Review Forge. AI-powered review assistance.
         </p>
       </footer>
