@@ -30,47 +30,66 @@ export type FetchAmazonReviewsApifyOutput = z.infer<typeof FetchAmazonReviewsApi
 function extractAsinAndDomain(productURL: string): { asin: string | null; domainCode: string | null } {
   try {
     const url = new URL(productURL);
-    const hostname = url.hostname; // e.g., www.amazon.com, www.amazon.co.uk
-
+    const hostname = url.hostname;
     let asin: string | null = null;
 
-    // Attempt 1: Extract ASIN from query parameter (e.g., /review/create-review/?asin=B0F4KZ6DRY)
+    // Attempt 1: Extract ASIN from query parameter
     const asinFromQuery = url.searchParams.get('asin');
-    if (asinFromQuery && /^[A-Z0-9]{10}$/.test(asinFromQuery)) {
-      asin = asinFromQuery;
-      // console.log(`[fetchAmazonReviewsApifyTool - extractAsinAndDomain] Extracted ASIN from query parameter: ${asin}`);
-    }
-    
-    // Attempt 2: Extract ASIN from path if not found in query (e.g., /dp/ASIN, /gp/product/ASIN)
-    if (!asin) {
-        const asinMatch = productURL.match(/\/(?:dp|gp\/product|-)\/([A-Z0-9]{10})/);
-        if (asinMatch) {
-            asin = asinMatch[1];
-            // console.log(`[fetchAmazonReviewsApifyTool - extractAsinAndDomain] Extracted ASIN from path: ${asin}`);
-        }
+    if (asinFromQuery && /^[A-Z0-9]{10}$/i.test(asinFromQuery)) { // Made regex case-insensitive for safety
+      asin = asinFromQuery.toUpperCase();
     }
 
-    // Extract domain code
-    let domainCode: string | null = null;
-    if (hostname.includes('amazon.')) {
-      const parts = hostname.split('amazon.');
-      if (parts.length > 1) {
-        domainCode = parts[1];
-        if (domainCode.startsWith('www.')) { 
-            domainCode = domainCode.substring(4);
-        }
-        if (domainCode.includes('/')) { // remove any path
-            domainCode = domainCode.split('/')[0];
+    // Attempt 2: Extract ASIN from common path patterns if not found in query
+    if (!asin) {
+      const pathPatterns = [
+        /\/(?:dp|gp\/product|-|d)\/([A-Z0-9]{10})/i, // Common patterns like /dp/ASIN, /gp/product/ASIN, /d/ASIN
+        /\/gp\/aw\/d\/([A-Z0-9]{10})/i // Another pattern /gp/aw/d/ASIN
+      ];
+      for (const pattern of pathPatterns) {
+        const match = productURL.match(pattern);
+        if (match && match[1]) {
+          asin = match[1].toUpperCase();
+          break;
         }
       }
     }
-    
-    if (!asin) console.warn(`[fetchAmazonReviewsApifyTool - extractAsinAndDomain] Could not extract ASIN from URL (checked path and 'asin' query param): ${productURL}`);
-    if (!domainCode) console.warn(`[fetchAmazonReviewsApifyTool - extractAsinAndDomain] Could not extract domainCode from URL: ${productURL}`);
 
+    let domainCode: string | null = null;
+    const knownTLDs = ['com', 'co.uk', 'de', 'fr', 'es', 'it', 'co.jp', 'cn', 'in', 'com.br', 'com.mx', 'com.au', 'ca'];
+    let matchedTld: string | undefined = undefined;
+
+    for (const tld of knownTLDs) {
+      if (hostname.includes(`amazon.${tld}`)) {
+        matchedTld = tld;
+        break;
+      }
+    }
+    
+    if (matchedTld) {
+      domainCode = matchedTld;
+    } else if (hostname.includes('amazon.')) {
+       // Fallback for TLDs not in the known list
+      const parts = hostname.split('amazon.');
+      if (parts.length > 1) {
+        // Get the last part after "amazon." and remove any trailing path components
+        domainCode = parts[parts.length - 1].split('/')[0];
+      }
+    }
+    // Normalize common country codes that might be part of a larger string if fallback is imperfect
+    if (domainCode === "uk") domainCode = "co.uk";
+    if (domainCode === "jp") domainCode = "co.jp";
+
+
+    if (!asin) {
+      console.warn(`[fetchAmazonReviewsApifyTool - extractAsinAndDomain] Could not extract ASIN from URL (checked query 'asin' and common path patterns): ${productURL}`);
+    }
+    if (!domainCode) {
+      console.warn(`[fetchAmazonReviewsApifyTool - extractAsinAndDomain] Could not extract domainCode from hostname: ${hostname} (URL: ${productURL})`);
+    }
+    
     return { asin, domainCode };
   } catch (error) {
-    console.error('[fetchAmazonReviewsApifyTool - extractAsinAndDomain] Error parsing Amazon URL:', error);
+    console.error(`[fetchAmazonReviewsApifyTool - extractAsinAndDomain] Error parsing URL '${productURL}':`, error);
     return { asin: null, domainCode: null };
   }
 }
@@ -94,7 +113,7 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
     const { asin, domainCode } = extractAsinAndDomain(productURL);
 
     if (!asin || !domainCode) {
-      console.error(`[fetchAmazonReviewsApifyTool] Could not extract ASIN or domain code from URL: ${productURL}. Returning empty reviews.`);
+      console.error(`[fetchAmazonReviewsApifyTool] Could not extract valid ASIN or domain code from URL: ${productURL}. ASIN: ${asin}, Domain: ${domainCode}. Returning empty reviews.`);
       return { reviews: [], productTitle: undefined };
     }
 
@@ -112,8 +131,6 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
       ],
     };
 
-    // console.log(`[fetchAmazonReviewsApifyTool] Calling Apify actor ${actorId} with input:`, JSON.stringify(actorInput, null, 2));
-
     try {
       const response = await fetch(apifyUrl, {
         method: 'POST',
@@ -126,7 +143,7 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
       if (!response.ok) {
         const errorBody = await response.text().catch(() => "Could not read error body");
         console.error(
-          `[fetchAmazonReviewsApifyTool] Apify API request failed for ASIN ${asin} (${domainCode}) on URL ${productURL}: ${response.status} ${response.statusText}. Body: ${errorBody.substring(0, 500)}. Returning empty reviews.`
+          `[fetchAmazonReviewsApifyTool] Apify API request failed for ASIN ${asin} (domain ${domainCode}) on URL ${productURL}: ${response.status} ${response.statusText}. Body: ${errorBody.substring(0, 500)}. Returning empty reviews.`
         );
         return { reviews: [], productTitle: undefined };
       }
@@ -134,7 +151,6 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
       const datasetItems: unknown = await response.json();
 
       if (!Array.isArray(datasetItems)) {
-        // console.error(`[fetchAmazonReviewsApifyTool] Apify API response for ASIN ${asin} is not an array of dataset items:`, datasetItems);
         return { reviews: [], productTitle: undefined };
       }
 
@@ -146,18 +162,16 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
           if (typeof (item as any).text === 'string' && (item as any).text.trim() !== '') {
             extractedReviews.push((item as any).text.trim());
           }
-          // Attempt to get productTitle from the first item, assuming it's consistent
           if (!extractedProductTitle && typeof (item as any).productTitle === 'string' && (item as any).productTitle.trim() !== '') {
             extractedProductTitle = (item as any).productTitle.trim();
           }
         }
       }
       
-      // console.log(`[fetchAmazonReviewsApifyTool] Fetched ${extractedReviews.length} reviews and title "${extractedProductTitle || 'N/A'}" from Apify for ASIN ${asin} (${productURL})`);
       return { reviews: extractedReviews, productTitle: extractedProductTitle };
 
     } catch (error) {
-      console.error(`[fetchAmazonReviewsApifyTool] Error calling Apify API or processing reviews for ASIN ${asin} (${productURL}):`, error);
+      console.error(`[fetchAmazonReviewsApifyTool] Error calling Apify API or processing reviews for ASIN ${asin} (URL ${productURL}):`, error);
       return { reviews: [], productTitle: undefined }; 
     }
   }
