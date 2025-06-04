@@ -33,12 +33,13 @@ const DEFAULT_DESCRIPTION = 'Could not fetch detailed product description. Pleas
 
 // Helper function to extract ASIN and domain code from Amazon URL
 function extractAsinAndDomain(productURL: string, toolName: string): { asin: string | null; domainCode: string | null } {
-  console.log(`[${toolName} - extractAsinAndDomain] Processing URL: ${productURL}`);
+  const trimmedProductURL = productURL.trim();
+  console.log(`[${toolName} - extractAsinAndDomain] Processing URL: ${trimmedProductURL}`);
   let asin: string | null = null;
   let domainCode: string | null = null;
 
   try {
-    const url = new URL(productURL);
+    const url = new URL(trimmedProductURL);
     const hostname = url.hostname;
     console.log(`[${toolName} - extractAsinAndDomain] Parsed hostname: ${hostname}`);
 
@@ -50,7 +51,7 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
         asin = asinFromQuery.toUpperCase();
         console.log(`[${toolName} - extractAsinAndDomain] Valid ASIN from query: ${asin}`);
       } else {
-        console.warn(`[${toolName} - extractAsinAndDomain] Invalid ASIN format from query param '${asinFromQuery}' for URL: ${productURL}`);
+        console.warn(`[${toolName} - extractAsinAndDomain] Invalid ASIN format from query param '${asinFromQuery}' for URL: ${trimmedProductURL}`);
       }
     } else {
       console.log(`[${toolName} - extractAsinAndDomain] No 'asin' found in query params.`);
@@ -60,15 +61,20 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
     if (!asin) {
       console.log(`[${toolName} - extractAsinAndDomain] ASIN not found in query, trying path patterns.`);
       const pathPatterns = [
-        /\/(?:dp|gp\/product|-|d)\/([A-Z0-9]{10})/i, 
-        /\/gp\/aw\/d\/([A-Z0-9]{10})/i 
+        /\/(?:dp|gp\/product|-|d)\/([A-Z0-9]{10})/i,
+        /\/gp\/aw\/d\/([A-Z0-9]{10})/i
       ];
       for (const pattern of pathPatterns) {
         const match = url.pathname.match(pattern);
         if (match && match[1]) {
-          asin = match[1].toUpperCase();
-          console.log(`[${toolName} - extractAsinAndDomain] ASIN from path pattern '${pattern.source}': ${asin}`);
-          break;
+          const potentialAsin = match[1].toUpperCase();
+           if (/^[A-Z0-9]{10}$/.test(potentialAsin)) { // Extra validation
+            asin = potentialAsin;
+            console.log(`[${toolName} - extractAsinAndDomain] ASIN from path pattern '${pattern.source}': ${asin}`);
+            break;
+          } else {
+            console.warn(`[${toolName} - extractAsinAndDomain] Invalid ASIN format from path pattern '${pattern.source}': ${potentialAsin} for URL: ${trimmedProductURL}`);
+          }
         }
       }
     }
@@ -90,7 +96,7 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
       const parts = hostname.split('amazon.');
       if (parts.length > 1) {
         const potentialDomainCode = parts[parts.length - 1].split('/')[0];
-         if (potentialDomainCode.length > 0 && potentialDomainCode.length <= 10) { // Basic sanity check
+         if (potentialDomainCode.length > 0 && potentialDomainCode.length <= 10) { 
             domainCode = potentialDomainCode;
         }
       }
@@ -105,16 +111,16 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
 
 
     if (!asin) {
-      console.warn(`[${toolName} - extractAsinAndDomain] FINAL: Could not extract ASIN. URL: ${productURL}`);
+      console.warn(`[${toolName} - extractAsinAndDomain] FINAL: Could not extract ASIN. URL: ${trimmedProductURL}`);
     }
     if (!domainCode) {
-      console.warn(`[${toolName} - extractAsinAndDomain] FINAL: Could not extract domainCode. Hostname: ${hostname}, URL: ${productURL}`);
+      console.warn(`[${toolName} - extractAsinAndDomain] FINAL: Could not extract domainCode. Hostname: ${hostname}, URL: ${trimmedProductURL}`);
     }
     
     console.log(`[${toolName} - extractAsinAndDomain] Returning: asin='${asin}', domainCode='${domainCode}'`);
     return { asin, domainCode };
   } catch (error) {
-    console.error(`[${toolName} - extractAsinAndDomain] Error processing URL '${productURL}':`, error);
+    console.error(`[${toolName} - extractAsinAndDomain] Error processing URL '${trimmedProductURL}':`, error);
     console.log(`[${toolName} - extractAsinAndDomain] Returning due to error: asin='null', domainCode='null'`);
     return { asin: null, domainCode: null };
   }
@@ -129,6 +135,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
     outputSchema: FetchAmazonProductInfoOutputSchema,
   },
   async ({ productURL }): Promise<FetchAmazonProductInfoOutput> => {
+    console.log(`[fetchAmazonProductInfoTool] Received URL: ${productURL}`);
     const apifyToken = process.env.APIFY_API_TOKEN;
     if (!apifyToken) {
       console.error('[fetchAmazonProductInfoTool] APIFY_API_TOKEN environment variable is not set. Returning default info.');
@@ -160,6 +167,8 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       ],
     };
 
+    console.log(`[fetchAmazonProductInfoTool] Preparing to call Apify with ASIN: ${asin}, Domain: ${domainCode}, Input: ${JSON.stringify(actorInput)}`);
+
     try {
       console.log(`[fetchAmazonProductInfoTool] Calling Apify with ASIN: ${asin}, Domain: ${domainCode}`);
       const response = await fetch(apifyApiUrl, {
@@ -170,6 +179,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
         body: JSON.stringify(actorInput),
       });
 
+      console.log(`[fetchAmazonProductInfoTool] Apify response status for ASIN ${asin}: ${response.status}`);
       if (!response.ok) {
         const errorBody = await response.text().catch(() => "Could not read error body");
         console.error(
@@ -182,9 +192,11 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       }
 
       const datasetItems: unknown = await response.json();
+      console.log(`[fetchAmazonProductInfoTool] Apify response JSON for ASIN ${asin} (first 200 chars): ${JSON.stringify(datasetItems).substring(0,200)}`);
+
 
       if (!Array.isArray(datasetItems) || datasetItems.length === 0 || typeof datasetItems[0] !== 'object' || datasetItems[0] === null) {
-        console.warn(`[fetchAmazonProductInfoTool] Apify returned no valid data for ASIN ${asin} (URL ${productURL}). Response: ${JSON.stringify(datasetItems).substring(0,200)}. Returning default info.`);
+        console.warn(`[fetchAmazonProductInfoTool] Apify returned no valid data for ASIN ${asin} (URL ${productURL}). Full Response: ${JSON.stringify(datasetItems)}. Returning default info.`);
         return {
           productName: DEFAULT_PRODUCT_NAME,
           productDescription: DEFAULT_DESCRIPTION,
