@@ -5,7 +5,7 @@
 /**
  * @fileOverview This file defines a Genkit flow for composing product reviews.
  * It takes an Amazon product link and optional user feedback.
- * Product details are fetched using an Apify Product Details AI tool.
+ * Product details (name, description, image) are fetched using an Apify Product Details AI tool.
  * Product reviews and title are fetched using an Apify Reviews AI tool.
  *
  * - composeReview - A function that composes a product review.
@@ -30,6 +30,7 @@ const ComposeReviewOutputSchema = z.object({
   reviewText: z.string().describe('The composed product review text.'),
   reviewTitle: z.string().describe('The composed product review title.'),
   fetchedProductName: z.string().optional().describe('The product name fetched from Apify product details tool or reviews tool.'),
+  fetchedProductImageURL: z.string().url().optional().describe('The product image URL fetched from Apify product details tool, if available.'),
 });
 
 export type ComposeReviewOutput = z.infer<typeof ComposeReviewOutputSchema>;
@@ -93,8 +94,8 @@ Regarding review TEXT length and style:
 - If I gave a high star rating (4-5 stars) or positive feedback, focus on what I liked and why. Be specific.
 - If I gave a low star rating (1-2 stars) or negative feedback, clearly explain the issues I encountered and my disappointment.
 - If my rating is mid-range (3 stars), or if I only provided feedback without a rating, provide a balanced perspective, highlighting both pros and cons if appropriate.
-- If I only gave a star rating and no text feedback, infer my general sentiment from that rating and elaborate on potential reasons based on the product description and other reviews, keeping the length appropriate.
-- If I provided no feedback or rating at all, write a concise, engaging, and generally positive review (e.g., 1-2 paragraphs) based on the product description and other customer reviews (if available).
+- If I only gave a star rating and no text feedback, infer my general sentiment from that rating and elaborate on potential reasons based on the product description and other reviews, keeping the length appropriate and concise (1-2 paragraphs typically).
+- If I provided no feedback or rating at all, write a concise, engaging, and generally positive review (e.g., 1-2 paragraphs) based on the product description and other customer reviews (if available). Aim for brief and general.
 
 Please ensure the review TEXT:
 - Is well-formatted for readability on Amazon (e.g., distinct paragraphs, bullet points for pros/cons if used).
@@ -125,6 +126,7 @@ const composeReviewFlow = ai.defineFlow(
     let fetchedProductInfo: FetchAmazonProductInfoOutput = {
         productName: "Product (Details Fetching Failed)",
         productDescription: "No description available.",
+        productImageURL: undefined,
     };
     let fetchedApifyReviewsData: FetchAmazonReviewsApifyOutput = {
         reviews: [],
@@ -176,7 +178,7 @@ const composeReviewFlow = ai.defineFlow(
       reviewTitle: promptOutput.reviewTitle,
       reviewText: promptOutput.reviewText,
       fetchedProductName: finalProductName,
+      fetchedProductImageURL: fetchedProductInfo.productImageURL,
     };
   }
 );
-

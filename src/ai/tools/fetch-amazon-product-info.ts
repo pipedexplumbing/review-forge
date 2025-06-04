@@ -25,6 +25,7 @@ const FetchAmazonProductInfoOutputSchema = z.object({
   productDescription: z
     .string()
     .describe('A brief description or key features of the product.'),
+  productImageURL: z.string().url().optional().describe('The URL of the main product image, if available.'),
 });
 export type FetchAmazonProductInfoOutput = z.infer<typeof FetchAmazonProductInfoOutputSchema>;
 
@@ -43,7 +44,6 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
     const hostname = url.hostname;
     console.log(`[${toolName} - extractAsinAndDomain] Parsed hostname: ${hostname}`);
 
-    // Attempt 1: Extract ASIN from query parameter "asin"
     const asinFromQuery = url.searchParams.get('asin');
     if (asinFromQuery) {
       console.log(`[${toolName} - extractAsinAndDomain] Found 'asin' in query params: '${asinFromQuery}'`);
@@ -57,7 +57,6 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
       console.log(`[${toolName} - extractAsinAndDomain] No 'asin' found in query params.`);
     }
 
-    // Attempt 2: Extract ASIN from common path patterns if not found in query
     if (!asin) {
       console.log(`[${toolName} - extractAsinAndDomain] ASIN not found in query, trying path patterns.`);
       const pathPatterns = [
@@ -68,7 +67,7 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
         const match = url.pathname.match(pattern);
         if (match && match[1]) {
           const potentialAsin = match[1].toUpperCase();
-           if (/^[A-Z0-9]{10}$/.test(potentialAsin)) { // Extra validation
+           if (/^[A-Z0-9]{10}$/.test(potentialAsin)) {
             asin = potentialAsin;
             console.log(`[${toolName} - extractAsinAndDomain] ASIN from path pattern '${pattern.source}': ${asin}`);
             break;
@@ -79,7 +78,6 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
       }
     }
 
-    // Domain extraction
     const knownTLDs = ['com', 'co.uk', 'de', 'fr', 'es', 'it', 'co.jp', 'cn', 'in', 'com.br', 'com.mx', 'com.au', 'ca'];
     let matchedTld: string | undefined = undefined;
 
@@ -104,8 +102,8 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
     
     if (domainCode) {
         console.log(`[${toolName} - extractAsinAndDomain] Initial domainCode: ${domainCode}`);
-        if (domainCode === "uk") domainCode = "co.uk";
-        if (domainCode === "jp") domainCode = "co.jp";
+        if (domainCode === "uk") domainCode = "co.uk"; // Common normalization
+        if (domainCode === "jp") domainCode = "co.jp"; // Common normalization
         console.log(`[${toolName} - extractAsinAndDomain] Normalized domainCode: ${domainCode}`);
     }
 
@@ -130,7 +128,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
   {
     name: 'fetchAmazonProductInfoTool',
     description:
-      'Fetches Amazon product details (name, description) using the Apify actor "axesso_data~amazon-product-details-scraper". Requires an APIFY_API_TOKEN environment variable.',
+      'Fetches Amazon product details (name, description, image URL) using the Apify actor "axesso_data~amazon-product-details-scraper". Requires an APIFY_API_TOKEN environment variable.',
     inputSchema: FetchAmazonProductInfoInputSchema,
     outputSchema: FetchAmazonProductInfoOutputSchema,
   },
@@ -142,6 +140,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       return {
         productName: DEFAULT_PRODUCT_NAME,
         productDescription: DEFAULT_DESCRIPTION,
+        productImageURL: undefined,
       };
     }
 
@@ -152,6 +151,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       return {
         productName: DEFAULT_PRODUCT_NAME,
         productDescription: DEFAULT_DESCRIPTION,
+        productImageURL: undefined,
       };
     }
 
@@ -188,6 +188,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
         return {
           productName: DEFAULT_PRODUCT_NAME,
           productDescription: DEFAULT_DESCRIPTION,
+          productImageURL: undefined,
         };
       }
 
@@ -200,6 +201,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
         return {
           productName: DEFAULT_PRODUCT_NAME,
           productDescription: DEFAULT_DESCRIPTION,
+          productImageURL: undefined,
         };
       }
 
@@ -227,6 +229,16 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
         productDescription = DEFAULT_DESCRIPTION;
       }
       
+      let productImageURL: string | undefined = undefined;
+      if (productData?.imageUrl && typeof productData.imageUrl === 'string') {
+        productImageURL = productData.imageUrl;
+      } else if (productData?.mainImage?.link && typeof productData.mainImage.link === 'string') {
+        productImageURL = productData.mainImage.link;
+      } else if (Array.isArray(productData?.images) && productData.images.length > 0 && productData.images[0]?.link && typeof productData.images[0].link === 'string') {
+        productImageURL = productData.images[0].link;
+      }
+      console.log(`[fetchAmazonProductInfoTool] Extracted productImageURL for ASIN ${asin}: ${productImageURL}`);
+
       const finalProductName = (typeof productName === 'string' ? productName.trim() : DEFAULT_PRODUCT_NAME).substring(0,200);
       const finalProductDescription = (typeof productDescription === 'string' ? productDescription.trim() : DEFAULT_DESCRIPTION).substring(0,1500);
       
@@ -234,6 +246,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       return {
         productName: finalProductName,
         productDescription: finalProductDescription,
+        productImageURL: productImageURL,
       };
 
     } catch (error) {
@@ -241,8 +254,8 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       return {
         productName: DEFAULT_PRODUCT_NAME,
         productDescription: DEFAULT_DESCRIPTION,
+        productImageURL: undefined,
       };
     }
   }
 );
-
