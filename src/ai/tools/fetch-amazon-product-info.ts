@@ -32,70 +32,90 @@ const DEFAULT_PRODUCT_NAME = 'Product (Details Fetching Failed)';
 const DEFAULT_DESCRIPTION = 'Could not fetch detailed product description. Please refer to the Amazon page.';
 
 // Helper function to extract ASIN and domain code from Amazon URL
-function extractAsinAndDomain(productURL: string): { asin: string | null; domainCode: string | null } {
+function extractAsinAndDomain(productURL: string, toolName: string): { asin: string | null; domainCode: string | null } {
+  console.log(`[${toolName} - extractAsinAndDomain] Processing URL: ${productURL}`);
+  let asin: string | null = null;
+  let domainCode: string | null = null;
+
   try {
     const url = new URL(productURL);
-    const hostname = url.hostname; // e.g. "www.amazon.com" or "amazon.com"
-    let asin: string | null = null;
+    const hostname = url.hostname;
+    console.log(`[${toolName} - extractAsinAndDomain] Parsed hostname: ${hostname}`);
 
     // Attempt 1: Extract ASIN from query parameter "asin"
     const asinFromQuery = url.searchParams.get('asin');
-    if (asinFromQuery && /^[A-Z0-9]{10}$/i.test(asinFromQuery)) {
-      asin = asinFromQuery.toUpperCase();
+    if (asinFromQuery) {
+      console.log(`[${toolName} - extractAsinAndDomain] Found 'asin' in query params: '${asinFromQuery}'`);
+      if (/^[A-Z0-9]{10}$/i.test(asinFromQuery)) {
+        asin = asinFromQuery.toUpperCase();
+        console.log(`[${toolName} - extractAsinAndDomain] Valid ASIN from query: ${asin}`);
+      } else {
+        console.warn(`[${toolName} - extractAsinAndDomain] Invalid ASIN format from query param '${asinFromQuery}' for URL: ${productURL}`);
+      }
+    } else {
+      console.log(`[${toolName} - extractAsinAndDomain] No 'asin' found in query params.`);
     }
 
     // Attempt 2: Extract ASIN from common path patterns if not found in query
     if (!asin) {
+      console.log(`[${toolName} - extractAsinAndDomain] ASIN not found in query, trying path patterns.`);
       const pathPatterns = [
-        /\/(?:dp|gp\/product|-|d)\/([A-Z0-9]{10})/i, // Common patterns like /dp/ASIN, /gp/product/ASIN, /d/ASIN
-        /\/gp\/aw\/d\/([A-Z0-9]{10})/i // Another pattern /gp/aw/d/ASIN
+        /\/(?:dp|gp\/product|-|d)\/([A-Z0-9]{10})/i, 
+        /\/gp\/aw\/d\/([A-Z0-9]{10})/i 
       ];
       for (const pattern of pathPatterns) {
-        const match = url.pathname.match(pattern); // Use url.pathname here
+        const match = url.pathname.match(pattern);
         if (match && match[1]) {
           asin = match[1].toUpperCase();
+          console.log(`[${toolName} - extractAsinAndDomain] ASIN from path pattern '${pattern.source}': ${asin}`);
           break;
         }
       }
     }
 
-    let domainCode: string | null = null;
+    // Domain extraction
     const knownTLDs = ['com', 'co.uk', 'de', 'fr', 'es', 'it', 'co.jp', 'cn', 'in', 'com.br', 'com.mx', 'com.au', 'ca'];
     let matchedTld: string | undefined = undefined;
 
     for (const tld of knownTLDs) {
-      // Check against "amazon.TLD" and "www.amazon.TLD"
       if (hostname.endsWith(`amazon.${tld}`)) {
         matchedTld = tld;
         break;
       }
     }
-
+    
     if (matchedTld) {
       domainCode = matchedTld;
-    } else if (hostname.includes('amazon.')) { // Fallback for less common TLDs or structures
+    } else if (hostname.includes('amazon.')) { 
       const parts = hostname.split('amazon.');
       if (parts.length > 1) {
-        // Get the last part after "amazon." and remove any trailing path components
-        domainCode = parts[parts.length - 1].split('/')[0];
+        const potentialDomainCode = parts[parts.length - 1].split('/')[0];
+         if (potentialDomainCode.length > 0 && potentialDomainCode.length <= 10) { // Basic sanity check
+            domainCode = potentialDomainCode;
+        }
       }
     }
     
-    // Normalize common country codes that might need adjustment
-    if (domainCode === "uk") domainCode = "co.uk"; // From amazon.uk to amazon.co.uk
-    if (domainCode === "jp") domainCode = "co.jp"; // From amazon.jp to amazon.co.jp
+    if (domainCode) {
+        console.log(`[${toolName} - extractAsinAndDomain] Initial domainCode: ${domainCode}`);
+        if (domainCode === "uk") domainCode = "co.uk";
+        if (domainCode === "jp") domainCode = "co.jp";
+        console.log(`[${toolName} - extractAsinAndDomain] Normalized domainCode: ${domainCode}`);
+    }
 
 
     if (!asin) {
-      console.warn(`[fetchAmazonProductInfoTool - extractAsinAndDomain] Could not extract ASIN from URL (checked query 'asin' and common path patterns): ${productURL}`);
+      console.warn(`[${toolName} - extractAsinAndDomain] FINAL: Could not extract ASIN. URL: ${productURL}`);
     }
     if (!domainCode) {
-      console.warn(`[fetchAmazonProductInfoTool - extractAsinAndDomain] Could not extract domainCode from hostname: ${hostname} (URL: ${productURL})`);
+      console.warn(`[${toolName} - extractAsinAndDomain] FINAL: Could not extract domainCode. Hostname: ${hostname}, URL: ${productURL}`);
     }
     
+    console.log(`[${toolName} - extractAsinAndDomain] Returning: asin='${asin}', domainCode='${domainCode}'`);
     return { asin, domainCode };
   } catch (error) {
-    console.error(`[fetchAmazonProductInfoTool - extractAsinAndDomain] Error parsing URL '${productURL}':`, error);
+    console.error(`[${toolName} - extractAsinAndDomain] Error processing URL '${productURL}':`, error);
+    console.log(`[${toolName} - extractAsinAndDomain] Returning due to error: asin='null', domainCode='null'`);
     return { asin: null, domainCode: null };
   }
 }
@@ -118,10 +138,10 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       };
     }
 
-    const { asin, domainCode } = extractAsinAndDomain(productURL);
+    const { asin, domainCode } = extractAsinAndDomain(productURL, 'fetchAmazonProductInfoTool');
 
     if (!asin || !domainCode) {
-      console.error(`[fetchAmazonProductInfoTool] Could not extract valid ASIN or domainCode from URL: ${productURL}. ASIN: ${asin}, Domain: ${domainCode}. Returning default info.`);
+      console.error(`[fetchAmazonProductInfoTool] Could not extract valid ASIN ('${asin}') or domainCode ('${domainCode}') from URL: ${productURL}. Returning default info.`);
       return {
         productName: DEFAULT_PRODUCT_NAME,
         productDescription: DEFAULT_DESCRIPTION,
@@ -141,6 +161,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
     };
 
     try {
+      console.log(`[fetchAmazonProductInfoTool] Calling Apify with ASIN: ${asin}, Domain: ${domainCode}`);
       const response = await fetch(apifyApiUrl, {
         method: 'POST',
         headers: {
@@ -163,7 +184,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       const datasetItems: unknown = await response.json();
 
       if (!Array.isArray(datasetItems) || datasetItems.length === 0 || typeof datasetItems[0] !== 'object' || datasetItems[0] === null) {
-        console.warn(`[fetchAmazonProductInfoTool] Apify returned no valid data for ASIN ${asin} (URL ${productURL}). Returning default info.`);
+        console.warn(`[fetchAmazonProductInfoTool] Apify returned no valid data for ASIN ${asin} (URL ${productURL}). Response: ${JSON.stringify(datasetItems).substring(0,200)}. Returning default info.`);
         return {
           productName: DEFAULT_PRODUCT_NAME,
           productDescription: DEFAULT_DESCRIPTION,
@@ -171,6 +192,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       }
 
       const productData = datasetItems[0] as any;
+      console.log(`[fetchAmazonProductInfoTool] Received productData from Apify for ASIN ${asin}: ${JSON.stringify(productData).substring(0,200)}...`);
       
       const productName = productData?.title || DEFAULT_PRODUCT_NAME;
       
@@ -196,6 +218,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       const finalProductName = (typeof productName === 'string' ? productName.trim() : DEFAULT_PRODUCT_NAME).substring(0,200);
       const finalProductDescription = (typeof productDescription === 'string' ? productDescription.trim() : DEFAULT_DESCRIPTION).substring(0,1500);
       
+      console.log(`[fetchAmazonProductInfoTool] Successfully processed Apify data for ASIN ${asin}. Name: ${finalProductName.substring(0,50)}...`);
       return {
         productName: finalProductName,
         productDescription: finalProductDescription,
@@ -210,3 +233,4 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
     }
   }
 );
+
