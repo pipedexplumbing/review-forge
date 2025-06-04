@@ -30,12 +30,12 @@ export type FetchAmazonReviewsApifyOutput = z.infer<typeof FetchAmazonReviewsApi
 function extractAsinAndDomain(productURL: string): { asin: string | null; domainCode: string | null } {
   try {
     const url = new URL(productURL);
-    const hostname = url.hostname;
+    const hostname = url.hostname; // e.g. "www.amazon.com" or "amazon.com"
     let asin: string | null = null;
 
-    // Attempt 1: Extract ASIN from query parameter
+    // Attempt 1: Extract ASIN from query parameter "asin"
     const asinFromQuery = url.searchParams.get('asin');
-    if (asinFromQuery && /^[A-Z0-9]{10}$/i.test(asinFromQuery)) { // Made regex case-insensitive for safety
+    if (asinFromQuery && /^[A-Z0-9]{10}$/i.test(asinFromQuery)) {
       asin = asinFromQuery.toUpperCase();
     }
 
@@ -46,7 +46,7 @@ function extractAsinAndDomain(productURL: string): { asin: string | null; domain
         /\/gp\/aw\/d\/([A-Z0-9]{10})/i // Another pattern /gp/aw/d/ASIN
       ];
       for (const pattern of pathPatterns) {
-        const match = productURL.match(pattern);
+        const match = url.pathname.match(pattern); // Use url.pathname here
         if (match && match[1]) {
           asin = match[1].toUpperCase();
           break;
@@ -59,7 +59,8 @@ function extractAsinAndDomain(productURL: string): { asin: string | null; domain
     let matchedTld: string | undefined = undefined;
 
     for (const tld of knownTLDs) {
-      if (hostname.includes(`amazon.${tld}`)) {
+       // Check against "amazon.TLD" and "www.amazon.TLD"
+      if (hostname.endsWith(`amazon.${tld}`)) {
         matchedTld = tld;
         break;
       }
@@ -67,17 +68,16 @@ function extractAsinAndDomain(productURL: string): { asin: string | null; domain
     
     if (matchedTld) {
       domainCode = matchedTld;
-    } else if (hostname.includes('amazon.')) {
-       // Fallback for TLDs not in the known list
+    } else if (hostname.includes('amazon.')) { // Fallback for less common TLDs or structures
       const parts = hostname.split('amazon.');
       if (parts.length > 1) {
         // Get the last part after "amazon." and remove any trailing path components
         domainCode = parts[parts.length - 1].split('/')[0];
       }
     }
-    // Normalize common country codes that might be part of a larger string if fallback is imperfect
-    if (domainCode === "uk") domainCode = "co.uk";
-    if (domainCode === "jp") domainCode = "co.jp";
+    // Normalize common country codes that might need adjustment
+    if (domainCode === "uk") domainCode = "co.uk"; // From amazon.uk to amazon.co.uk
+    if (domainCode === "jp") domainCode = "co.jp"; // From amazon.jp to amazon.co.jp
 
 
     if (!asin) {
@@ -151,6 +151,7 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
       const datasetItems: unknown = await response.json();
 
       if (!Array.isArray(datasetItems)) {
+        console.warn(`[fetchAmazonReviewsApifyTool] Apify returned no valid data array for ASIN ${asin} (URL ${productURL}). Returning empty reviews.`);
         return { reviews: [], productTitle: undefined };
       }
 
