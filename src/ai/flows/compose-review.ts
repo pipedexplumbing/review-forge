@@ -56,14 +56,14 @@ const composeReviewPrompt = ai.definePrompt({
   output: {
     schema: z.object({
       reviewTitle: z.string().describe('A concise and catchy title for the review, typically 5-15 words.'),
-      reviewText: z.string().describe('The composed product review text.'),
+      reviewText: z.string().describe('The composed product review text, at least 4 paragraphs long, potentially including pros/cons and emojis.'),
     }),
   },
   prompt: `You are helping me write an Amazon product review. I need you to write the review TEXT in the first person, as if I am the one who bought and used the product.
 Additionally, create a concise and catchy TITLE for this review. The title should be suitable for an Amazon review title field, generally between 5 to 15 words.
 The goal is for me to be able to copy and paste both the title and the review text directly into Amazon's "Create Review" page.
 
-Here is information about the product:
+Here is information about the product I supposedly used:
 Product Name: {{{productName}}}
 Product Description: {{{productDescription}}}
 
@@ -81,23 +81,24 @@ To help you, I've also looked at what other customers are saying. Here are some 
 Based on all this information (the product itself, my feedback, and what other customers said), please generate the review TITLE and TEXT.
 
 For the review TEXT:
-- It should sound like a real person sharing their genuine experience with the product.
+- It should sound like a real person sharing their genuine experience with the product. Write *entirely* in the first person, using 'I', 'me', 'my'. Describe *my* supposed direct experience with the product.
+- The review should be substantial, typically 4 or more paragraphs long.
+- If it feels natural for the product and my feedback, consider including a 'Pros:' and 'Cons:' section. Use simple bullet points for easy copying (e.g., "- Pro: ...", "- Con: ...", or "* Pro: ...", "* Con: ..."). This section should be part of the overall review text.
+- You can include one or two relevant emojis (e.g., 👍, 🤔, 🎉) if they fit the tone of the review, but don't overdo it. Place them naturally within the text.
 - If I gave a high star rating (4-5 stars) or positive feedback, focus on what I liked and why. Be specific.
 - If I gave a low star rating (1-2 stars) or negative feedback, clearly explain the issues I encountered and my disappointment.
-- If my rating is mid-range (3 stars), or if I only provided feedback without a rating, provide a balanced perspective, highlighting both pros and cons.
+- If my rating is mid-range (3 stars), or if I only provided feedback without a rating, provide a balanced perspective, highlighting both pros and cons if appropriate.
 - If I only gave a star rating and no text feedback, infer my general sentiment from that rating and elaborate on potential reasons based on the product description and other reviews.
 - If I provided no feedback or rating at all, write a generally positive and informative review based on the product description and other customer reviews (if available). If there's very little info, create a concise, engaging, and generally positive review that someone might find helpful.
 
 Please ensure the review TEXT:
-- Is written entirely in the first person (e.g., "I found...", "For me...", "I was impressed by...").
-- Sounds natural and conversational. Avoid overly robotic or formulaic language.
-- Is well-formatted for readability on Amazon (e.g., paragraphs, maybe bullet points for pros/cons if it feels natural for the specific review).
+- Is well-formatted for readability on Amazon (e.g., distinct paragraphs, bullet points for pros/cons if used).
 - Does not include any placeholders like "[Your Name]" or instructions for me to fill in.
 
 Your entire response MUST be a single JSON object with two keys: "reviewTitle" and "reviewText". For example:
 {
   "reviewTitle": "Excellent Product, Highly Recommend!",
-  "reviewText": "I've been using this product for a week now and I'm very impressed..."
+  "reviewText": "I've been using this product for a week now and I'm very impressed... [additional paragraphs]...\\n\\nPros:\\n- Great battery life\\n- Easy to use\\n\\nCons:\\n- A bit bulky"
 }
 Do not include any other text, explanations, or markdown formatting like \`\`\`json before or after this JSON object.
 `,
@@ -148,7 +149,7 @@ const composeReviewFlow = ai.defineFlow(
     }
 
     if (GENERIC_PRODUCT_NAMES.includes(finalProductName)) {
-        finalProductName = "This Product";
+        finalProductName = "This Product"; // A more generic fallback if all else fails
     }
 
 
