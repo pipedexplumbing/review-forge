@@ -56,7 +56,7 @@ const composeReviewPrompt = ai.definePrompt({
   output: {
     schema: z.object({
       reviewTitle: z.string().describe('A concise and catchy title for the review, typically 5-15 words.'),
-      reviewText: z.string().describe('The composed product review text, at least 4 paragraphs long, potentially including pros/cons and emojis.'),
+      reviewText: z.string().describe('The composed product review text, potentially including pros/cons and emojis. Length should be appropriate to user input.'),
     }),
   },
   prompt: `You are helping me write an Amazon product review. I need you to write the review TEXT in the first person, as if I am the one who bought and used the product.
@@ -66,6 +66,8 @@ The goal is for me to be able to copy and paste both the title and the review te
 Here is information about the product I supposedly used:
 Product Name: {{{productName}}}
 Product Description: {{{productDescription}}}
+
+Regarding the product name: Use it for context, but avoid repeatedly stating "{{{productName}}}" in the review. Refer to it naturally, for example, as "this product," "the item," "it," or by its features, as a real person would. The goal is a genuine-sounding personal experience.
 
 Here's my input, if I provided any:
 {{#if starRating}}My Star Rating: {{{starRating}}} stars{{/if}}
@@ -80,16 +82,19 @@ To help you, I've also looked at what other customers are saying. Here are some 
 
 Based on all this information (the product itself, my feedback, and what other customers said), please generate the review TITLE and TEXT.
 
-For the review TEXT:
+Regarding review TEXT length and style:
 - It should sound like a real person sharing their genuine experience with the product. Write *entirely* in the first person, using 'I', 'me', 'my'. Describe *my* supposed direct experience with the product.
-- The review should be substantial, typically 4 or more paragraphs long.
+- The length should be appropriate to the input I've given:
+  - If I have provided detailed feedback in "{{{feedbackText}}}", then a more comprehensive review (e.g., 2-4 well-developed paragraphs) is appropriate to cover my points.
+  - If my feedback is brief or absent, aim for a more concise review (e.g., 1-2 well-developed paragraphs, or even a few insightful sentences).
+  - Prioritize quality and authenticity over sheer length.
 - If it feels natural for the product and my feedback, consider including a 'Pros:' and 'Cons:' section. Use simple bullet points for easy copying (e.g., "- Pro: ...", "- Con: ...", or "* Pro: ...", "* Con: ..."). This section should be part of the overall review text.
 - You can include one or two relevant emojis (e.g., 👍, 🤔, 🎉) if they fit the tone of the review, but don't overdo it. Place them naturally within the text.
 - If I gave a high star rating (4-5 stars) or positive feedback, focus on what I liked and why. Be specific.
 - If I gave a low star rating (1-2 stars) or negative feedback, clearly explain the issues I encountered and my disappointment.
 - If my rating is mid-range (3 stars), or if I only provided feedback without a rating, provide a balanced perspective, highlighting both pros and cons if appropriate.
-- If I only gave a star rating and no text feedback, infer my general sentiment from that rating and elaborate on potential reasons based on the product description and other reviews.
-- If I provided no feedback or rating at all, write a generally positive and informative review based on the product description and other customer reviews (if available). If there's very little info, create a concise, engaging, and generally positive review that someone might find helpful.
+- If I only gave a star rating and no text feedback, infer my general sentiment from that rating and elaborate on potential reasons based on the product description and other reviews, keeping the length appropriate.
+- If I provided no feedback or rating at all, write a concise, engaging, and generally positive review (e.g., 1-2 paragraphs) based on the product description and other customer reviews (if available).
 
 Please ensure the review TEXT:
 - Is well-formatted for readability on Amazon (e.g., distinct paragraphs, bullet points for pros/cons if used).
