@@ -253,9 +253,9 @@ export default function ReviewForgePage() {
           </CardContent>
         </Card>
         <footer className="mt-20 text-center">
-          <p className="text-xl text-muted-foreground font-body">
-            &copy; {currentYear || ''} Review Forge.
-          </p>
+          {currentYear && <p className="text-xl text-muted-foreground font-body">
+            &copy; {currentYear} Review Forge.
+          </p>}
       </footer>
       </div>
     );
@@ -477,9 +477,9 @@ export default function ReviewForgePage() {
         )}
       </div>
       <footer className="mt-24 mb-12 text-center">
-        <p className="text-xl text-muted-foreground font-body">
-          &copy; {currentYear || ''} Review Forge. AI-powered review assistance.
-        </p>
+        {currentYear && <p className="text-xl text-muted-foreground font-body">
+          &copy; {currentYear} Review Forge. AI-powered review assistance.
+        </p>}
       </footer>
     </div>
   );
