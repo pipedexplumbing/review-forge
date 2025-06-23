@@ -42,7 +42,7 @@ export async function composeReview(input: ComposeReviewInput): Promise<ComposeR
 // Internal schema for the prompt, after fetching product info and reviews
 const ComposeReviewPromptInputSchema = z.object({
   productName: z.string().describe('The name of the product.'),
-  productDescription: z.string().describe('A description of the product.'),
+  productDescription: z.string().optional().describe('A description of the product.'),
   starRating: z.number().min(1).max(5).optional().describe('The star rating given by the user (1-5), if provided.'),
   feedbackText: z.string().optional().describe('The user feedback text about the product, if provided.'),
   customerReviewsText: z.string().optional().describe('A string containing snippets of existing customer reviews for the product, if available.')
@@ -66,7 +66,7 @@ The goal is for me to be able to copy and paste both the title and the review te
 
 Here is information about the product I supposedly used:
 Product Name: {{{productName}}}
-Product Description: {{{productDescription}}}
+{{#if productDescription}}Product Description: {{{productDescription}}}{{/if}}
 
 Regarding the product name: Use it for context, but avoid repeatedly stating "{{{productName}}}" in the review. Refer to it naturally, for example, as "this product," "the item," "it," or by its features, as a real person would. The goal is a genuine-sounding personal experience.
 
@@ -95,7 +95,7 @@ Regarding review TEXT length and style:
 - If I gave a low star rating (1-2 stars) or negative feedback, clearly explain the issues I encountered and my disappointment.
 - If my rating is mid-range (3 stars), or if I only provided feedback without a rating, provide a balanced perspective, highlighting both pros and cons if appropriate.
 - If I only gave a star rating and no text feedback, infer my general sentiment from that rating and elaborate on potential reasons based on the product description and other reviews, keeping the length appropriate and concise (1-2 paragraphs typically).
-- If I provided no feedback or rating at all, write a concise, engaging, and generally positive review (e.g., 1-2 paragraphs) based on the product description and other customer reviews (if available). Aim for brief and general.
+- If I provided no feedback or rating at all, write a concise, engaging, and generally positive review (e.g., 1-2 paragraphs) based on the product description and other customer reviews (if available). If no other information is available, use your knowledge to create a plausible, general review for "{{{productName}}}".
 
 Please ensure the review TEXT:
 - Is well-formatted for readability on Amazon (e.g., distinct paragraphs, bullet points for pros/cons if used).
@@ -110,12 +110,6 @@ Do not include any other text, explanations, or markdown formatting like \`\`\`j
 `,
 });
 
-const GENERIC_PRODUCT_NAMES = [
-    "Product (Details Fetching Failed)",
-    "Unknown Product",
-    "This Product",
-];
-
 const composeReviewFlow = ai.defineFlow(
   {
     name: 'composeReviewFlow',
@@ -124,59 +118,48 @@ const composeReviewFlow = ai.defineFlow(
   },
   async (input: ComposeReviewInput) => {
     console.log('[composeReviewFlow] Starting flow with input:', input);
-    let fetchedProductInfo: FetchAmazonProductInfoOutput = {
-        productName: "Product (Details Fetching Failed)",
-        productDescription: "No description available.",
-        productImageURL: undefined,
-    };
-    let fetchedApifyReviewsData: FetchAmazonReviewsApifyOutput = {
-        reviews: [],
-        productTitle: undefined,
-    };
+    let fetchedProductInfo: FetchAmazonProductInfoOutput | null = null;
+    let fetchedApifyReviewsData: FetchAmazonReviewsApifyOutput | null = null;
 
+    // We will attempt to fetch from both sources. If one fails, we can still proceed if the other succeeds.
     try {
-      console.log('[composeReviewFlow] Attempting to fetch product info...');
-      fetchedProductInfo = await fetchAmazonProductInfoTool({ productURL: input.amazonLink });
-      console.log('[composeReviewFlow] Product info fetched:', fetchedProductInfo);
-    } catch (toolError) {
-      console.warn('[composeReviewFlow] Failed to fetch product info with Apify product details tool:', toolError);
-    }
-
-    try {
-        console.log('[composeReviewFlow] Attempting to fetch reviews...');
-        fetchedApifyReviewsData = await fetchAmazonReviewsApifyTool({ productURL: input.amazonLink });
-        console.log('[composeReviewFlow] Reviews data fetched:', {
-          reviewCount: fetchedApifyReviewsData.reviews.length, 
-          productTitle: fetchedApifyReviewsData.productTitle
-        });
-    } catch (toolError) {
-        console.warn('[composeReviewFlow] Failed to fetch customer reviews/title with Apify reviews tool:', toolError);
+      fetchedApifyReviewsData = await fetchAmazonReviewsApifyTool({ productURL: input.amazonLink });
+      console.log('[composeReviewFlow] Reviews data fetched successfully.');
+    } catch (error) {
+      console.warn('[composeReviewFlow] Failed to fetch customer reviews/title with Apify reviews tool:', error);
     }
     
-    const customerReviewsText = fetchedApifyReviewsData.reviews.length > 0 
-        ? fetchedApifyReviewsData.reviews.slice(0, 10).map(review => `- ${review.substring(0, 300)}${review.length > 300 ? '...' : ''}`).join('\\n')
+    try {
+      fetchedProductInfo = await fetchAmazonProductInfoTool({ productURL: input.amazonLink });
+      console.log('[composeReviewFlow] Product info fetched successfully.');
+    } catch (error) {
+      console.warn('[composeReviewFlow] Failed to fetch product info with Apify product details tool:', error);
+    }
+
+    // Determine the final product name, preferring the reviews tool's title, then the details tool's title.
+    const finalProductName = fetchedApifyReviewsData?.productTitle || fetchedProductInfo?.productName;
+    const finalProductDescription = fetchedProductInfo?.productDescription;
+    const finalProductImageURL = fetchedProductInfo?.productImageURL;
+    
+    // If BOTH tools failed to return a product name, then we cannot proceed.
+    if (!finalProductName) {
+        console.error('[composeReviewFlow] CRITICAL: Both Apify tools failed to retrieve a product name. Aborting.');
+        throw new Error('Could not fetch product details from the provided Amazon link. Please ensure the link is a valid, public product page and try again.');
+    }
+
+    const customerReviewsText = (fetchedApifyReviewsData?.reviews?.length ?? 0) > 0 
+        ? (fetchedApifyReviewsData?.reviews ?? []).slice(0, 10).map(review => `- ${review.substring(0, 300)}${review.length > 300 ? '...' : ''}`).join('\\n')
         : undefined;
-
-    let finalProductName = fetchedProductInfo.productName;
-
-    if (GENERIC_PRODUCT_NAMES.includes(finalProductName) && fetchedApifyReviewsData.productTitle && fetchedApifyReviewsData.productTitle.trim() !== "") {
-        finalProductName = fetchedApifyReviewsData.productTitle;
-    }
-
-    if (GENERIC_PRODUCT_NAMES.includes(finalProductName)) {
-        finalProductName = "This Product"; // A more generic fallback if all else fails
-    }
-
 
     const promptInput: z.infer<typeof ComposeReviewPromptInputSchema> = {
       productName: finalProductName,
-      productDescription: fetchedProductInfo.productDescription,
+      productDescription: finalProductDescription,
       starRating: input.starRating,
       feedbackText: input.feedbackText,
       customerReviewsText: customerReviewsText,
     };
     
-    console.log('[composeReviewFlow] Calling composeReviewPrompt with:', promptInput);
+    console.log('[composeReviewFlow] Calling composeReviewPrompt with product:', promptInput.productName);
     const {output: promptOutput} = await composeReviewPrompt(promptInput);
     
     if (!promptOutput || !promptOutput.reviewText || !promptOutput.reviewTitle) {
@@ -189,7 +172,7 @@ const composeReviewFlow = ai.defineFlow(
       reviewTitle: promptOutput.reviewTitle,
       reviewText: promptOutput.reviewText,
       fetchedProductName: finalProductName,
-      fetchedProductImageURL: fetchedProductInfo.productImageURL,
+      fetchedProductImageURL: finalProductImageURL,
     };
   }
 );

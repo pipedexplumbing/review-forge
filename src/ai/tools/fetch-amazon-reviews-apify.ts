@@ -139,18 +139,20 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
     outputSchema: FetchAmazonReviewsApifyOutputSchema,
   },
   async ({ productURL }): Promise<FetchAmazonReviewsApifyOutput> => {
-    console.log(`[fetchAmazonReviewsApifyTool] Received URL: ${productURL}`);
+    const toolName = 'fetchAmazonReviewsApifyTool';
+    console.log(`[${toolName}] Received URL: ${productURL}`);
+
     const apifyToken = process.env.APIFY_API_TOKEN;
     if (!apifyToken) {
-      console.error('[fetchAmazonReviewsApifyTool] APIFY_API_TOKEN environment variable is not set. Returning empty reviews.');
-      return { reviews: [], productTitle: undefined };
+      console.error(`[${toolName}] APIFY_API_TOKEN environment variable is not set.`);
+      throw new Error('APIFY_API_TOKEN environment variable is not set.');
     }
 
-    const { asin, domainCode } = extractAsinAndDomain(productURL, 'fetchAmazonReviewsApifyTool');
+    const { asin, domainCode } = extractAsinAndDomain(productURL, toolName);
 
     if (!asin || !domainCode) {
-      console.error(`[fetchAmazonReviewsApifyTool] Could not extract valid ASIN ('${asin}') or domain code ('${domainCode}') from URL: ${productURL}. Returning empty reviews.`);
-      return { reviews: [], productTitle: undefined };
+      console.error(`[${toolName}] Could not extract valid ASIN ('${asin}') or domain code ('${domainCode}') from URL: ${productURL}.`);
+      throw new Error(`Could not extract valid ASIN or domain from URL: ${productURL}.`);
     }
 
     const actorId = 'axesso_data~amazon-reviews-scraper';
@@ -166,63 +168,55 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
         },
       ],
     };
-    console.log(`[fetchAmazonReviewsApifyTool] Preparing to call Apify with ASIN: ${asin}, Domain: ${domainCode}, Input: ${JSON.stringify(actorInput)}`);
+    console.log(`[${toolName}] Calling Apify with ASIN: ${asin}, Domain: ${domainCode}`);
 
-    try {
-      console.log(`[fetchAmazonReviewsApifyTool] Calling Apify with ASIN: ${asin}, Domain: ${domainCode}`);
-      const response = await fetch(apifyUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(actorInput),
-      });
+    const response = await fetch(apifyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(actorInput),
+    });
 
-      console.log(`[fetchAmazonReviewsApifyTool] Apify response status for ASIN ${asin}: ${response.status}`);
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => "Could not read error body");
-        console.error(
-          `[fetchAmazonReviewsApifyTool] Apify API request failed for ASIN ${asin} (domain ${domainCode}) on URL ${productURL}: ${response.status} ${response.statusText}. Body: ${errorBody.substring(0, 500)}. Returning empty reviews.`
-        );
-        return { reviews: [], productTitle: undefined };
-      }
+    console.log(`[${toolName}] Apify response status for ASIN ${asin}: ${response.status}`);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "Could not read error body");
+      console.error(`[${toolName}] Apify API request failed: ${response.status} ${response.statusText}. Body: ${errorBody.substring(0, 500)}.`);
+      throw new Error(`Apify API request failed with status ${response.status}: ${response.statusText}.`);
+    }
 
-      const datasetItems: unknown = await response.json();
-      console.log(`[fetchAmazonReviewsApifyTool] Apify response JSON for ASIN ${asin} (first 200 chars): ${JSON.stringify(datasetItems).substring(0,200)}`);
+    const datasetItems: unknown = await response.json();
 
+    if (!Array.isArray(datasetItems)) { 
+      console.error(`[${toolName}] Apify returned data that is not an array for ASIN ${asin}.`);
+      throw new Error(`Apify returned invalid data for product ASIN ${asin}.`);
+    }
+    
+    if (datasetItems.length === 0) {
+       console.log(`[${toolName}] Apify returned an empty array for ASIN ${asin}. This may be because no reviews were found.`);
+    } else {
+        console.log(`[${toolName}] Received ${datasetItems.length} items from Apify for ASIN ${asin}.`);
+    }
 
-      if (!Array.isArray(datasetItems)) { 
-        console.warn(`[fetchAmazonReviewsApifyTool] Apify returned data that is not an array for ASIN ${asin} (URL ${productURL}). Full Response: ${JSON.stringify(datasetItems)}. Returning empty reviews.`);
-        return { reviews: [], productTitle: undefined };
-      }
-      
-      if (datasetItems.length === 0) {
-         console.log(`[fetchAmazonReviewsApifyTool] Apify returned an empty array for ASIN ${asin} (URL ${productURL}). This means no reviews were found by the actor, or the actor run failed silently for this input.`);
-      } else {
-        console.log(`[fetchAmazonReviewsApifyTool] Received ${datasetItems.length} items from Apify for ASIN ${asin}. First item: ${JSON.stringify(datasetItems[0]).substring(0,100)}...`);
-      }
+    const extractedReviews: string[] = [];
+    let extractedProductTitle: string | undefined = undefined;
 
-
-      const extractedReviews: string[] = [];
-      let extractedProductTitle: string | undefined = undefined;
-
-      for (const item of datasetItems) {
-        if (typeof item === 'object' && item !== null) {
-          if (typeof (item as any).text === 'string' && (item as any).text.trim() !== '') {
-            extractedReviews.push((item as any).text.trim());
-          }
-          if (!extractedProductTitle && typeof (item as any).productTitle === 'string' && (item as any).productTitle.trim() !== '') {
-            extractedProductTitle = (item as any).productTitle.trim();
-          }
+    for (const item of datasetItems) {
+      if (typeof item === 'object' && item !== null) {
+        if (typeof (item as any).text === 'string' && (item as any).text.trim() !== '') {
+          extractedReviews.push((item as any).text.trim());
+        }
+        if (!extractedProductTitle && typeof (item as any).productTitle === 'string' && (item as any).productTitle.trim() !== '') {
+          extractedProductTitle = (item as any).productTitle.trim();
         }
       }
-      
-      console.log(`[fetchAmazonReviewsApifyTool] Extracted ${extractedReviews.length} reviews. Product Title: '${extractedProductTitle ? extractedProductTitle.substring(0,50)+'...' : undefined}'`);
-      return { reviews: extractedReviews, productTitle: extractedProductTitle };
-
-    } catch (error) {
-      console.error(`[fetchAmazonReviewsApifyTool] Error calling Apify API or processing reviews for ASIN ${asin} (URL ${productURL}):`, error);
-      return { reviews: [], productTitle: undefined }; 
     }
+    
+    if (datasetItems.length > 0 && !extractedProductTitle) {
+      console.warn(`[${toolName}] Apify returned review data but no product title for ASIN ${asin}.`);
+      // This is not a fatal error, we can proceed without the title from this source.
+    }
+    
+    console.log(`[${toolName}] Extracted ${extractedReviews.length} reviews. Product Title: '${extractedProductTitle ? extractedProductTitle.substring(0,50)+'...' : 'N/A'}'`);
+    return { reviews: extractedReviews, productTitle: extractedProductTitle };
+
   }
 );

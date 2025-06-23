@@ -29,9 +29,6 @@ const FetchAmazonProductInfoOutputSchema = z.object({
 });
 export type FetchAmazonProductInfoOutput = z.infer<typeof FetchAmazonProductInfoOutputSchema>;
 
-const DEFAULT_PRODUCT_NAME = 'Product (Details Fetching Failed)';
-const DEFAULT_DESCRIPTION = 'Could not fetch detailed product description. Please refer to the Amazon page.';
-
 // Helper function to extract ASIN and domain code from Amazon URL
 function extractAsinAndDomain(productURL: string, toolName: string): { asin: string | null; domainCode: string | null } {
   const trimmedProductURL = productURL.trim();
@@ -145,26 +142,20 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
     outputSchema: FetchAmazonProductInfoOutputSchema,
   },
   async ({ productURL }): Promise<FetchAmazonProductInfoOutput> => {
-    console.log(`[fetchAmazonProductInfoTool] Received URL: ${productURL}`);
+    const toolName = 'fetchAmazonProductInfoTool';
+    console.log(`[${toolName}] Received URL: ${productURL}`);
+    
     const apifyToken = process.env.APIFY_API_TOKEN;
     if (!apifyToken) {
-      console.error('[fetchAmazonProductInfoTool] APIFY_API_TOKEN environment variable is not set. Returning default info.');
-      return {
-        productName: DEFAULT_PRODUCT_NAME,
-        productDescription: DEFAULT_DESCRIPTION,
-        productImageURL: undefined,
-      };
+      console.error(`[${toolName}] APIFY_API_TOKEN environment variable is not set.`);
+      throw new Error('APIFY_API_TOKEN environment variable is not set.');
     }
 
-    const { asin, domainCode } = extractAsinAndDomain(productURL, 'fetchAmazonProductInfoTool');
+    const { asin, domainCode } = extractAsinAndDomain(productURL, toolName);
 
     if (!asin || !domainCode) {
-      console.error(`[fetchAmazonProductInfoTool] Could not extract valid ASIN ('${asin}') or domainCode ('${domainCode}') from URL: ${productURL}. Returning default info.`);
-      return {
-        productName: DEFAULT_PRODUCT_NAME,
-        productDescription: DEFAULT_DESCRIPTION,
-        productImageURL: undefined,
-      };
+      console.error(`[${toolName}] Could not extract valid ASIN ('${asin}') or domainCode ('${domainCode}') from URL: ${productURL}.`);
+      throw new Error(`Could not extract valid ASIN or domain from URL: ${productURL}`);
     }
 
     const actorId = 'axesso_data~amazon-product-details-scraper';
@@ -179,95 +170,66 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       ],
     };
 
-    console.log(`[fetchAmazonProductInfoTool] Preparing to call Apify with ASIN: ${asin}, Domain: ${domainCode}, Input: ${JSON.stringify(actorInput)}`);
+    console.log(`[${toolName}] Calling Apify with ASIN: ${asin}, Domain: ${domainCode}`);
+    const response = await fetch(apifyApiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(actorInput),
+    });
 
-    try {
-      console.log(`[fetchAmazonProductInfoTool] Calling Apify with ASIN: ${asin}, Domain: ${domainCode}`);
-      const response = await fetch(apifyApiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(actorInput),
-      });
-
-      console.log(`[fetchAmazonProductInfoTool] Apify response status for ASIN ${asin}: ${response.status}`);
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => "Could not read error body");
-        console.error(
-          `[fetchAmazonProductInfoTool] Apify API request failed for ASIN ${asin} (domain ${domainCode}) on URL ${productURL}: ${response.status} ${response.statusText}. Body: ${errorBody.substring(0, 500)}. Returning default info.`
-        );
-        return {
-          productName: DEFAULT_PRODUCT_NAME,
-          productDescription: DEFAULT_DESCRIPTION,
-          productImageURL: undefined,
-        };
-      }
-
-      const datasetItems: unknown = await response.json();
-      console.log(`[fetchAmazonProductInfoTool] Apify response JSON for ASIN ${asin} (first 200 chars): ${JSON.stringify(datasetItems).substring(0,200)}`);
-
-
-      if (!Array.isArray(datasetItems) || datasetItems.length === 0 || typeof datasetItems[0] !== 'object' || datasetItems[0] === null) {
-        console.warn(`[fetchAmazonProductInfoTool] Apify returned no valid data for ASIN ${asin} (URL ${productURL}). Full Response: ${JSON.stringify(datasetItems)}. Returning default info.`);
-        return {
-          productName: DEFAULT_PRODUCT_NAME,
-          productDescription: DEFAULT_DESCRIPTION,
-          productImageURL: undefined,
-        };
-      }
-
-      const productData = datasetItems[0] as any;
-      console.log(`[fetchAmazonProductInfoTool] Received productData from Apify for ASIN ${asin}: ${JSON.stringify(productData).substring(0,200)}...`);
-      
-      const productName = productData?.title || DEFAULT_PRODUCT_NAME;
-      
-      let productDescription = productData?.productDescription || "";
-      if (Array.isArray(productData?.features) && productData.features.length > 0) {
-        const featuresText = productData.features.join('. ');
-        if (productDescription && productDescription.length < 20 && featuresText.length > productDescription.length) {
-          productDescription = featuresText;
-        } else if (productDescription) {
-          productDescription += '. ' + featuresText;
-        } else {
-          productDescription = featuresText;
-        }
-      }
-       if (!productDescription && productData?.aboutProduct && Array.isArray(productData.aboutProduct)) {
-        productDescription = productData.aboutProduct.map((item: any) => item.value || "").join(". ");
-      }
-
-      if (!productDescription || productDescription.trim() === "") {
-        productDescription = DEFAULT_DESCRIPTION;
-      }
-      
-      let productImageURL: string | undefined = undefined;
-      if (productData?.imageUrl && typeof productData.imageUrl === 'string') {
-        productImageURL = productData.imageUrl;
-      } else if (productData?.mainImage?.link && typeof productData.mainImage.link === 'string') {
-        productImageURL = productData.mainImage.link;
-      } else if (Array.isArray(productData?.images) && productData.images.length > 0 && productData.images[0]?.link && typeof productData.images[0].link === 'string') {
-        productImageURL = productData.images[0].link;
-      }
-      console.log(`[fetchAmazonProductInfoTool] Extracted productImageURL for ASIN ${asin}: ${productImageURL}`);
-
-      const finalProductName = (typeof productName === 'string' ? productName.trim() : DEFAULT_PRODUCT_NAME).substring(0,200);
-      const finalProductDescription = (typeof productDescription === 'string' ? productDescription.trim() : DEFAULT_DESCRIPTION).substring(0,1500);
-      
-      console.log(`[fetchAmazonProductInfoTool] Successfully processed Apify data for ASIN ${asin}. Name: ${finalProductName.substring(0,50)}...`);
-      return {
-        productName: finalProductName,
-        productDescription: finalProductDescription,
-        productImageURL: productImageURL,
-      };
-
-    } catch (error) {
-      console.error(`[fetchAmazonProductInfoTool] Error calling Apify API or processing data for ASIN ${asin} (URL ${productURL}):`, error);
-      return {
-        productName: DEFAULT_PRODUCT_NAME,
-        productDescription: DEFAULT_DESCRIPTION,
-        productImageURL: undefined,
-      };
+    console.log(`[${toolName}] Apify response status for ASIN ${asin}: ${response.status}`);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "Could not read error body");
+      console.error(`[${toolName}] Apify API request failed: ${response.status} ${response.statusText}. Body: ${errorBody.substring(0, 500)}.`);
+      throw new Error(`Apify API request failed with status ${response.status}: ${response.statusText}.`);
     }
+
+    const datasetItems: unknown = await response.json();
+    
+    if (!Array.isArray(datasetItems) || datasetItems.length === 0 || typeof datasetItems[0] !== 'object' || datasetItems[0] === null) {
+      console.error(`[${toolName}] Apify returned no valid data for ASIN ${asin}.`);
+      throw new Error(`Apify returned no valid data for product ASIN ${asin}.`);
+    }
+
+    const productData = datasetItems[0] as any;
+    console.log(`[${toolName}] Received productData from Apify for ASIN ${asin}.`);
+    
+    const productName = productData?.title;
+    if (!productName || typeof productName !== 'string' || productName.trim() === '') {
+        console.error(`[${toolName}] Apify data for ASIN ${asin} is missing a valid title.`);
+        throw new Error(`Apify data for ASIN ${asin} is missing a valid title.`);
+    }
+    
+    let productDescription = productData?.productDescription || "";
+    if (Array.isArray(productData?.features) && productData.features.length > 0) {
+      const featuresText = productData.features.join('. ');
+      productDescription = productDescription ? `${productDescription}. ${featuresText}` : featuresText;
+    }
+    if (!productDescription && productData?.aboutProduct && Array.isArray(productData.aboutProduct)) {
+      productDescription = productData.aboutProduct.map((item: any) => item.value || "").join(". ");
+    }
+    if (!productDescription) {
+        productDescription = "No detailed product description available.";
+    }
+    
+    let productImageURL: string | undefined = undefined;
+    if (productData?.imageUrl && typeof productData.imageUrl === 'string') {
+      productImageURL = productData.imageUrl;
+    } else if (productData?.mainImage?.link && typeof productData.mainImage.link === 'string') {
+      productImageURL = productData.mainImage.link;
+    } else if (Array.isArray(productData?.images) && productData.images.length > 0 && productData.images[0]?.link && typeof productData.images[0].link === 'string') {
+      productImageURL = productData.images[0].link;
+    }
+    console.log(`[${toolName}] Extracted productImageURL for ASIN ${asin}: ${productImageURL}`);
+
+    const finalProductName = productName.trim().substring(0,200);
+    const finalProductDescription = productDescription.trim().substring(0,1500);
+    
+    console.log(`[${toolName}] Successfully processed Apify data for ASIN ${asin}.`);
+    return {
+      productName: finalProductName,
+      productDescription: finalProductDescription,
+      productImageURL: productImageURL,
+    };
   }
 );
