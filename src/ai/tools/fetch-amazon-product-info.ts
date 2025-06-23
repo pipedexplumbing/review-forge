@@ -156,14 +156,22 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
     const actorId = 'axesso_data~amazon-product-details-scraper';
     const apifyApiUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apifyToken}`;
 
-    const actorInput = [
-      {
-        asin: asin,
-        domainCode: domainCode,
-      },
-    ];
+    const actorInput = {
+        "startUrls": [
+            {
+                "url": `https://www.amazon.${domainCode}/dp/${asin}`
+            }
+        ],
+        "includeReviews": false,
+        "proxy": {
+            "useApifyProxy": true,
+            "apifyProxyGroups": [
+                "RESIDENTIAL"
+            ]
+        }
+    };
 
-    console.log(`[${toolName}] Calling Apify with input: ${JSON.stringify(actorInput)}`);
+    console.log(`[${toolName}] Calling Apify with input: ${JSON.stringify(actorInput, null, 2)}`);
     const response = await fetch(apifyApiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
