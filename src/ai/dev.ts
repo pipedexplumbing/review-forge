@@ -37,6 +37,5 @@ async function testApifyAmazonReviews() {
   console.log("--- Apify Amazon Reviews Tool Test Finished ---");
 }
 
-// Run the test when the Genkit dev server starts
-// You might want to comment this out after testing to avoid running it every time.
-testApifyAmazonReviews();
+// To run the test, you can uncomment the line below and restart the Genkit dev server.
+// testApifyAmazonReviews();
