@@ -157,7 +157,13 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
       "asin": asin,
       "domainCode": domainCode,
       "maxPages": 1, 
-      "sortBy": "recent", 
+      "sortBy": "recent",
+      "proxy": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": [
+            "RESIDENTIAL"
+        ]
+      }
     };
 
     console.log(`[${toolName}] Calling Apify with input: ${JSON.stringify(actorInput, null, 2)}`);
