@@ -13,10 +13,11 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import StarRatingInput from '@/components/ui/star-rating-input';
 import { useToast } from '@/hooks/use-toast';
 import { composeReview, type ComposeReviewInput, type ComposeReviewOutput } from '@/ai/flows/compose-review';
-import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, PencilRuler, LogOut, KeyRound, Highlighter, RotateCcw } from 'lucide-react';
+import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, PencilRuler, LogOut, KeyRound, Highlighter, RotateCcw, RefreshCw } from 'lucide-react';
 
 // --- Authentication Constants ---
 const HARDCODED_PASSWORD = "amazon";
@@ -28,6 +29,7 @@ const reviewFormSchema = z.object({
   amazonLink: z.string().url("Please enter a valid Amazon product link."),
   starRating: z.number().min(0).max(5).optional(),
   feedbackText: z.string().optional(),
+  skipReviews: z.boolean().optional(),
 });
 
 type ReviewFormData = z.infer<typeof reviewFormSchema>;
@@ -48,6 +50,9 @@ export default function ReviewForgePage() {
   const [error, setError] = useState<string | null>(null);
   const [isReviewCopied, setIsReviewCopied] = useState(false);
   const [isTitleCopied, setIsTitleCopied] = useState(false);
+  const [showRefineBox, setShowRefineBox] = useState(false);
+  const [refineComments, setRefineComments] = useState("");
+  const [isRefining, setIsRefining] = useState(false);
   const { toast, dismiss: dismissToast } = useToast();
   const [currentYear, setCurrentYear] = useState<number | null>(null);
   // --- End App Specific State ---
@@ -115,6 +120,7 @@ export default function ReviewForgePage() {
       amazonLink: "",
       starRating: 0,
       feedbackText: "",
+      skipReviews: false,
     },
   });
 
@@ -132,6 +138,7 @@ export default function ReviewForgePage() {
       amazonLink: data.amazonLink,
       starRating: data.starRating === 0 ? undefined : data.starRating,
       feedbackText: data.feedbackText,
+      skipReviews: data.skipReviews,
     };
 
     try {
@@ -151,10 +158,19 @@ export default function ReviewForgePage() {
     } catch (e) {
       console.error("Error composing review:", e);
       const errorMessage = e instanceof Error ? e.message : "An unknown error occurred.";
-      setError(`Failed to compose review: ${errorMessage}`);
+      
+      // Provide more helpful error messages
+      let userFriendlyMessage = errorMessage;
+      if (errorMessage.includes("APIFY_API_TOKEN")) {
+        userFriendlyMessage = "API configuration missing. Please ensure the APIFY_API_TOKEN environment variable is set.";
+      } else if (errorMessage.includes("Could not fetch product")) {
+        userFriendlyMessage = "Unable to fetch Amazon product data. Please check your API configuration and try again.";
+      }
+      
+      setError(`Failed to compose review: ${userFriendlyMessage}`);
       toast({
         title: "Error",
-        description: `Failed to compose review: ${errorMessage}`,
+        description: userFriendlyMessage,
         variant: "destructive",
       });
     } finally {
@@ -206,6 +222,7 @@ export default function ReviewForgePage() {
       amazonLink: "",
       starRating: 0,
       feedbackText: "",
+      skipReviews: false,
     });
     setGeneratedReview(null);
     setGeneratedReviewTitle(null);
@@ -214,6 +231,50 @@ export default function ReviewForgePage() {
     setError(null);
     setIsReviewCopied(false);
     setIsTitleCopied(false);
+    setShowRefineBox(false);
+    setRefineComments("");
+  };
+
+  const handleRefineReview = async () => {
+    if (!refineComments.trim()) return;
+    
+    setIsRefining(true);
+    setError(null);
+    
+    const currentFeedback = reviewForm.getValues("feedbackText");
+    const combinedFeedback = currentFeedback 
+      ? `${currentFeedback}\n\nAdditional refinement: ${refineComments}`
+      : refineComments;
+    
+    const aiInput: ComposeReviewInput = {
+      amazonLink: reviewForm.getValues("amazonLink"),
+      starRating: reviewForm.getValues("starRating") === 0 ? undefined : reviewForm.getValues("starRating"),
+      feedbackText: combinedFeedback,
+      skipReviews: reviewForm.getValues("skipReviews"),
+    };
+
+    try {
+      const result: ComposeReviewOutput = await composeReview(aiInput);
+      setGeneratedReview(result.reviewText);
+      setGeneratedReviewTitle(result.reviewTitle);
+      setShowRefineBox(false);
+      setRefineComments("");
+      toast({
+        title: "Review Refined!",
+        description: "Your review has been updated with your additional feedback.",
+      });
+    } catch (e) {
+      console.error("Error refining review:", e);
+      const errorMessage = e instanceof Error ? e.message : "An unknown error occurred.";
+      setError(`Failed to refine review: ${errorMessage}`);
+      toast({
+        title: "Error",
+        description: "Failed to refine the review. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefining(false);
+    }
   };
   // --- End Review Forge Form and Logic ---
 
@@ -271,11 +332,17 @@ export default function ReviewForgePage() {
         </Button>
       </div>
       
-      <header className="mb-16 text-center">
-        <div className="inline-flex items-center justify-center p-4 bg-primary text-primary-foreground rounded-full mb-8 shadow-xl transform transition-transform hover:scale-105">
-           <PencilRuler size={72} />
+      <header className="mb-10 text-center">
+        <div className="mb-6 flex justify-center">
+          <img 
+            src="/Amazon-Logo-2000.png" 
+            alt="Amazon" 
+            width="120" 
+            height="36" 
+            className="opacity-70"
+          />
         </div>
-        <h1 className="font-headline text-6xl md:text-8xl font-bold text-primary tracking-tight mb-4">
+        <h1 className="font-headline text-6xl md:text-8xl font-bold text-foreground tracking-tight mb-4">
           Review Forge
         </h1>
         <p className="font-body text-muted-foreground mt-5 text-xl md:text-2xl max-w-2xl mx-auto">
@@ -285,12 +352,12 @@ export default function ReviewForgePage() {
 
       <div className="w-full max-w-3xl space-y-12">
         <Card className="shadow-xl rounded-lg overflow-hidden transition-all hover:shadow-primary/20">
-          <CardHeader className="bg-primary/90 p-8">
-            <CardTitle className="font-headline text-4xl md:text-5xl text-primary-foreground flex items-center">
-              <Sparkles className="mr-4 h-10 w-10" />
+          <CardHeader className="bg-gradient-to-r from-primary/10 to-primary/5 p-8 border-b">
+            <CardTitle className="font-headline text-4xl md:text-5xl text-foreground flex items-center">
+              <Sparkles className="mr-4 h-10 w-10 text-primary" />
               Craft Your Review
             </CardTitle>
-            <CardDescription className="font-body text-primary-foreground/80 pt-2 text-lg md:text-xl">
+            <CardDescription className="font-body text-muted-foreground pt-2 text-lg md:text-xl">
               Fill in the details below to generate your review.
             </CardDescription>
           </CardHeader>
@@ -311,19 +378,41 @@ export default function ReviewForgePage() {
                   )}
                 />
 
-                <FormField
-                  control={reviewForm.control}
-                  name="starRating"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-headline text-2xl md:text-3xl font-bold text-foreground mb-4 block">Your Rating (Optional)</FormLabel>
-                      <FormControl>
-                        <StarRatingInput value={field.value || 0} onChange={field.onChange} disabled={isLoading} size={48} />
-                      </FormControl>
-                      <FormMessage className="text-lg mt-2" />
-                    </FormItem>
-                  )}
-                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                  <FormField
+                    control={reviewForm.control}
+                    name="starRating"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="font-headline text-2xl md:text-3xl font-bold text-foreground mb-4 block">Your Rating (Optional)</FormLabel>
+                        <FormControl>
+                          <StarRatingInput value={field.value || 0} onChange={field.onChange} disabled={isLoading} size={48} />
+                        </FormControl>
+                        <FormMessage className="text-lg mt-2" />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={reviewForm.control}
+                    name="skipReviews"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between space-x-3 space-y-0 rounded-lg border p-6">
+                        <div className="space-y-0.5">
+                          <FormLabel className="font-headline text-xl md:text-2xl font-bold">Skip Reading Reviews</FormLabel>
+                          <p className="text-muted-foreground text-base">Generate review without fetching existing customer reviews</p>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                            disabled={isLoading}
+                            className="scale-125"
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                </div>
                 <FormField
                   control={reviewForm.control}
                   name="feedbackText"
@@ -424,9 +513,9 @@ export default function ReviewForgePage() {
 
         {generatedReviewTitle && !isLoading && (
           <Card className="shadow-lg rounded-lg overflow-hidden animate-in fade-in-50 duration-500">
-            <CardHeader className="bg-secondary/80 p-8">
-              <CardTitle className="font-headline text-3xl md:text-4xl text-secondary-foreground flex items-center">
-                <Highlighter className="mr-4 h-9 w-9" /> Review Title
+            <CardHeader className="bg-gradient-to-r from-secondary/20 to-secondary/10 p-8 border-b">
+              <CardTitle className="font-headline text-3xl md:text-4xl text-foreground flex items-center">
+                <Highlighter className="mr-4 h-9 w-9 text-primary" /> Review Title
               </CardTitle>
             </CardHeader>
             <CardContent className="p-8">
@@ -451,9 +540,9 @@ export default function ReviewForgePage() {
 
         {generatedReview && !isLoading && (
           <Card className="shadow-lg rounded-lg overflow-hidden animate-in fade-in-50 duration-500">
-            <CardHeader className="bg-primary/90 p-8">
-              <CardTitle className="font-headline text-3xl md:text-4xl text-primary-foreground flex items-center">
-                <PencilRuler className="mr-4 h-9 w-9" /> Review Body
+            <CardHeader className="bg-gradient-to-r from-primary/10 to-primary/5 p-8 border-b">
+              <CardTitle className="font-headline text-3xl md:text-4xl text-foreground flex items-center">
+                <PencilRuler className="mr-4 h-9 w-9 text-primary" /> Review Body
               </CardTitle>
             </CardHeader>
             <CardContent className="p-8">
@@ -461,17 +550,71 @@ export default function ReviewForgePage() {
                 {generatedReview}
               </div>
             </CardContent>
-            <CardFooter className="p-8 border-t bg-card/60">
-              <Button 
-                onClick={() => handleCopy(generatedReview, 'review')}
-                variant="outline" 
-                className="w-full text-xl md:text-2xl py-7 font-headline font-semibold transition-transform hover:scale-[1.02]" 
-                size="lg" 
-                disabled={isReviewCopied}
-              >
-                {isReviewCopied ? <Check className="mr-3.5 h-7 w-7 text-green-500" /> : <Copy className="mr-3.5 h-7 w-7" />}
-                {isReviewCopied ? 'Copied!' : 'Copy Review Body'}
-              </Button>
+            <CardFooter className="p-8 border-t bg-card/60 space-y-4 flex-col">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                <Button 
+                  onClick={() => handleCopy(generatedReview, 'review')}
+                  variant="outline" 
+                  className="w-full text-xl md:text-2xl py-7 font-headline font-semibold transition-transform hover:scale-[1.02]" 
+                  size="lg" 
+                  disabled={isReviewCopied}
+                >
+                  {isReviewCopied ? <Check className="mr-3.5 h-7 w-7 text-green-500" /> : <Copy className="mr-3.5 h-7 w-7" />}
+                  {isReviewCopied ? 'Copied!' : 'Copy Review Body'}
+                </Button>
+                <Button 
+                  onClick={() => setShowRefineBox(!showRefineBox)}
+                  variant="secondary" 
+                  className="w-full text-xl md:text-2xl py-7 font-headline font-semibold transition-transform hover:scale-[1.02]" 
+                  size="lg"
+                  disabled={isRefining}
+                >
+                  <RefreshCw className="mr-3.5 h-7 w-7" />
+                  Refine Review
+                </Button>
+              </div>
+              {showRefineBox && (
+                <div className="w-full space-y-4 animate-in fade-in-50 slide-in-from-top-2 duration-300">
+                  <Textarea
+                    placeholder="Add comments to refine your review... e.g., 'Make it more enthusiastic' or 'Add more details about durability'"
+                    value={refineComments}
+                    onChange={(e) => setRefineComments(e.target.value)}
+                    rows={4}
+                    className="text-lg resize-none p-5"
+                    disabled={isRefining}
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Button
+                      onClick={handleRefineReview}
+                      className="w-full text-xl py-6 font-headline font-semibold"
+                      disabled={isRefining || !refineComments.trim()}
+                    >
+                      {isRefining ? (
+                        <>
+                          <Loader2 className="mr-3 h-6 w-6 animate-spin" />
+                          Refining...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="mr-3 h-6 w-6" />
+                          Apply Refinements
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setShowRefineBox(false);
+                        setRefineComments("");
+                      }}
+                      variant="outline"
+                      className="w-full text-xl py-6 font-headline font-semibold"
+                      disabled={isRefining}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardFooter>
           </Card>
         )}

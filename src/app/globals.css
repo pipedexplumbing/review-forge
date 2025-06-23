@@ -12,25 +12,25 @@ h1, h2, h3, h4, h5, h6 {
 
 @layer base {
   :root {
-    --background: 240 67% 94%; /* Light Lavender #E6E6FA - Default light theme */
-    --foreground: 275 70% 20%; /* Dark Indigo for text - Default light theme */
-    --card: 240 60% 98%;
-    --card-foreground: 275 70% 20%;
-    --popover: 240 60% 98%;
-    --popover-foreground: 275 70% 20%;
-    --primary: 275 100% 25%; /* Indigo #4B0082 - Default light theme */
+    --background: 0 0% 98%; /* Clean white background */
+    --foreground: 220 13% 13%; /* Dark charcoal for text */
+    --card: 0 0% 100%; /* Pure white cards */
+    --card-foreground: 220 13% 13%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 13% 13%;
+    --primary: 217 91% 60%; /* Modern blue #3B82F6 */
     --primary-foreground: 0 0% 100%;
-    --secondary: 275 75% 45%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 240 50% 88%;
-    --muted-foreground: 275 40% 45%;
-    --accent: 274 100% 50%; /* Violet #8F00FF - Default light theme */
+    --secondary: 210 40% 96%; /* Light blue-gray */
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 217 91% 60%; /* Same as primary for consistency */
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 275 50% 80%;
-    --input: 240 50% 96%;
-    --ring: 274 100% 50%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 60%;
     --radius: 0.5rem;
 
     --chart-1: 275 70% 50%;

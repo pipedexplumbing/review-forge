@@ -43,10 +43,28 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
     hostname = url.hostname;
     console.log(`[${toolName}] Parsed hostname: ${hostname}`);
 
+    // Check for ASIN in query params
     const asinFromQuery = url.searchParams.get('asin');
     if (asinFromQuery && /^[A-Z0-9]{10}$/i.test(asinFromQuery)) {
       asin = asinFromQuery.toUpperCase();
       console.log(`[${toolName}] Found valid ASIN in query params: ${asin}`);
+    }
+    
+    // Check for ASIN in 'ats' parameter (Buy Again URLs)
+    if (!asin) {
+      const atsParam = url.searchParams.get('ats');
+      if (atsParam) {
+        try {
+          const decodedAts = Buffer.from(atsParam, 'base64').toString();
+          const atsData = JSON.parse(decodedAts);
+          if (atsData.explicitCandidates && /^[A-Z0-9]{10}$/i.test(atsData.explicitCandidates)) {
+            asin = atsData.explicitCandidates.toUpperCase();
+            console.log(`[${toolName}] Found ASIN in ats parameter: ${asin}`);
+          }
+        } catch (e) {
+          console.log(`[${toolName}] Could not parse ats parameter`);
+        }
+      }
     }
 
     // If no ASIN from query, check path
@@ -153,29 +171,33 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
 
     const { asin, domainCode } = extractAsinAndDomain(productURL, toolName);
 
-    const actorId = 'axesso_data~amazon-product-details-scraper';
+    // Use the junglee actor for product details
+    const actorId = 'junglee~free-amazon-product-scraper';
     const apifyApiUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apifyToken}`;
+    const safeApiUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=***`;
 
-    const actorInput = {
-        "startUrls": [
+    // Use the correct format for junglee actor (direct input, not wrapped)
+    const requestBody = {
+        "categoryUrls": [
             {
                 "url": `https://www.amazon.${domainCode}/dp/${asin}`
             }
         ],
-        "includeReviews": false,
-        "proxy": {
-            "useApifyProxy": true,
-            "apifyProxyGroups": [
-                "RESIDENTIAL"
-            ]
-        }
+        "maxItemsPerStartUrl": 1,
+        "useCaptchaSolver": false,
+        "scrapeProductVariantPrices": false,
+        "scrapeProductDetails": true,
+        "ensureLoadedProductDescriptionFields": false
     };
-
-    console.log(`[${toolName}] Calling Apify with input: ${JSON.stringify(actorInput, null, 2)}`);
+    console.log(`[${toolName}] Calling Apify with body: ${JSON.stringify(requestBody, null, 2)}`);
+    console.log(`[${toolName}] About to send request to: ${safeApiUrl}`);
+    console.log(`[${toolName}] Request headers: Content-Type: application/json`);
+    console.log(`[${toolName}] Request body stringified: ${JSON.stringify(requestBody)}`);
+    
     const response = await fetch(apifyApiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(actorInput),
+      body: JSON.stringify(requestBody),
     });
 
     console.log(`[${toolName}] Apify response status for ASIN ${asin}: ${response.status}`);
@@ -194,10 +216,12 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
 
     const productData = datasetItems[0] as any;
     console.log(`[${toolName}] Received productData from Apify for ASIN ${asin}.`);
+    console.log(`[${toolName}] Product data keys: ${Object.keys(productData).join(', ')}`);
     
-    const productName = productData?.title;
+    // Try different field names for junglee actor
+    const productName = productData?.title || productData?.name || productData?.productName;
     if (!productName || typeof productName !== 'string' || productName.trim() === '') {
-        console.error(`[${toolName}] Apify data for ASIN ${asin} is missing a valid title.`);
+        console.error(`[${toolName}] Apify data for ASIN ${asin} is missing a valid title. Available fields: ${Object.keys(productData).join(', ')}`);
         throw new Error(`Apify data for ASIN ${asin} is missing a valid title.`);
     }
     
@@ -218,8 +242,12 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
       productImageURL = productData.imageUrl;
     } else if (productData?.mainImage?.link && typeof productData.mainImage.link === 'string') {
       productImageURL = productData.mainImage.link;
+    } else if (productData?.thumbnailImage && typeof productData.thumbnailImage === 'string') {
+      productImageURL = productData.thumbnailImage;
     } else if (Array.isArray(productData?.images) && productData.images.length > 0 && productData.images[0]?.link && typeof productData.images[0].link === 'string') {
       productImageURL = productData.images[0].link;
+    } else if (Array.isArray(productData?.highResolutionImages) && productData.highResolutionImages.length > 0 && typeof productData.highResolutionImages[0] === 'string') {
+      productImageURL = productData.highResolutionImages[0];
     }
     console.log(`[${toolName}] Extracted productImageURL for ASIN ${asin}: ${productImageURL}`);
 

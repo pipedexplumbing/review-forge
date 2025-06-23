@@ -28,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`dark ${belleza.variable} ${alegreya.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${belleza.variable} ${alegreya.variable}`} suppressHydrationWarning>
       <head>
         {/* Google Fonts are now handled by next/font, no direct link needed here unless for other fonts */}
       </head>

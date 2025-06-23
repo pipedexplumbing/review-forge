@@ -22,6 +22,7 @@ const ComposeReviewInputSchema = z.object({
   amazonLink: z.string().url().describe('The Amazon product link.'),
   starRating: z.number().min(1).max(5).optional().describe('The star rating given by the user (1-5), if provided.'),
   feedbackText: z.string().optional().describe('The user feedback text about the product, if provided.'),
+  skipReviews: z.boolean().optional().describe('Whether to skip fetching existing customer reviews.'),
 });
 
 export type ComposeReviewInput = z.infer<typeof ComposeReviewInputSchema>;
@@ -63,6 +64,14 @@ const composeReviewPrompt = ai.definePrompt({
   prompt: `You are helping me write an Amazon product review. I need you to write the review TEXT in the first person, as if I am the one who bought and used the product.
 Additionally, create a concise and catchy TITLE for this review. The title should be suitable for an Amazon review title field, generally between 5 to 15 words.
 The goal is for me to be able to copy and paste both the title and the review text directly into Amazon's "Create Review" page.
+
+CRITICAL INSTRUCTIONS:
+- DO NOT make up personal scenarios (like "gift for brother", "my wife loved it", etc.) unless I specifically mentioned them
+- DO NOT invent specific use cases or personal stories I didn't share
+- You CAN and SHOULD use the product details and other customer reviews to write a helpful review
+- If I provided feedback, incorporate it as the primary focus
+- If I didn't provide feedback, base the review on the product details and what other customers are saying
+- Keep personal pronouns general ("I" not "my brother/wife/friend") unless I mentioned specific people
 
 Here is information about the product I supposedly used:
 Product Name: {{{productName}}}
@@ -122,24 +131,57 @@ const composeReviewFlow = ai.defineFlow(
     let fetchedApifyReviewsData: FetchAmazonReviewsApifyOutput | null = null;
 
     try {
-      // First, try to get product info and reviews in parallel.
-      // If either tool fails, the entire flow will stop and report the error.
-      [fetchedProductInfo, fetchedApifyReviewsData] = await Promise.all([
-        fetchAmazonProductInfoTool({ productURL: input.amazonLink }),
-        fetchAmazonReviewsApifyTool({ productURL: input.amazonLink })
-      ]);
-      console.log('[composeReviewFlow] Both product info and reviews data fetched successfully.');
+      console.log('[composeReviewFlow] Fetching data for URL:', input.amazonLink);
+      console.log('[composeReviewFlow] Skip reviews option:', input.skipReviews);
+      
+      if (input.skipReviews) {
+        // Only fetch product info
+        fetchedProductInfo = await fetchAmazonProductInfoTool({ productURL: input.amazonLink });
+        fetchedApifyReviewsData = { reviews: [], productTitle: undefined };
+        console.log('[composeReviewFlow] Product info fetched successfully, skipping reviews as requested.');
+      } else {
+        // Fetch both product info and reviews
+        const results = await Promise.allSettled([
+          fetchAmazonProductInfoTool({ productURL: input.amazonLink }),
+          fetchAmazonReviewsApifyTool({ productURL: input.amazonLink })
+        ]);
+        
+        // Product info is required
+        if (results[0].status === 'rejected') {
+          console.error('[composeReviewFlow] Product info tool failed:', results[0].reason);
+          throw results[0].reason;
+        }
+        fetchedProductInfo = results[0].value;
+        
+        // Reviews are optional - if they fail, we continue without them
+        if (results[1].status === 'fulfilled') {
+          fetchedApifyReviewsData = results[1].value;
+          console.log('[composeReviewFlow] Reviews data fetched successfully.');
+        } else {
+          console.warn('[composeReviewFlow] Reviews tool failed, continuing without reviews:', results[1].reason);
+          fetchedApifyReviewsData = { reviews: [], productTitle: undefined };
+        }
+        console.log('[composeReviewFlow] Product info fetched successfully, proceeding with review generation.');
+      }
     
     } catch (error: any) {
         console.error('[composeReviewFlow] CRITICAL: A data-fetching tool failed. Aborting flow.', error);
         // Re-throw a user-friendly error to be displayed in the UI.
         const errorMessage = error.message || "An unknown error occurred during data fetching.";
+        
+        // Provide more specific error messages
+        if (errorMessage.includes('Could not extract a valid ASIN')) {
+          throw new Error(`Unable to extract product information from this URL. Please use a direct Amazon product page link (e.g., https://www.amazon.com/dp/B0XXXXXXXXX). The app currently supports standard product pages, not special Amazon pages like Buy Again, Mobile Missions, or Review pages.`);
+        } else if (errorMessage.includes('APIFY_API_TOKEN')) {
+          throw new Error(`API configuration missing. Please ensure the APIFY_API_TOKEN environment variable is set.`);
+        }
+        
         throw new Error(`Could not fetch product details from the provided Amazon link. Reason: ${errorMessage}. Please ensure the link is a valid, public product page and try again.`);
     }
 
     // Since the tools will now throw an error if they fail, we can be confident we have the data here.
     // We prioritize the product name from the more detailed product info tool.
-    const finalProductName = fetchedProductInfo.productName || fetchedApifyReviewsData.productTitle;
+    const finalProductName = fetchedProductInfo.productName || fetchedApifyReviewsData.productTitle || 'Unknown Product';
     const finalProductDescription = fetchedProductInfo.productDescription;
     const finalProductImageURL = fetchedProductInfo.productImageURL;
 
@@ -155,7 +197,13 @@ const composeReviewFlow = ai.defineFlow(
       customerReviewsText: customerReviewsText,
     };
     
-    console.log('[composeReviewFlow] Calling composeReviewPrompt with product:', promptInput.productName);
+    console.log('[composeReviewFlow] AI is receiving the following data:');
+    console.log('- Product Name:', promptInput.productName);
+    console.log('- Product Description:', promptInput.productDescription ? `${promptInput.productDescription.substring(0, 100)}...` : 'None');
+    console.log('- Star Rating:', promptInput.starRating || 'Not provided');
+    console.log('- User Feedback:', promptInput.feedbackText || 'Not provided');
+    console.log('- Customer Reviews:', promptInput.customerReviewsText ? `${fetchedApifyReviewsData.reviews.length} reviews included` : 'None');
+    console.log('- Product Image URL:', finalProductImageURL || 'None');
     const {output: promptOutput} = await composeReviewPrompt(promptInput);
     
     if (!promptOutput || !promptOutput.reviewText || !promptOutput.reviewTitle) {

@@ -22,7 +22,7 @@ export type FetchAmazonReviewsApifyInput = z.infer<typeof FetchAmazonReviewsApif
 
 const FetchAmazonReviewsApifyOutputSchema = z.object({
   reviews: z.array(z.string()).describe('An array of extracted review text snippets.'),
-  productTitle: z.string().describe('The product title extracted by Apify.'),
+  productTitle: z.string().optional().describe('The product title extracted by Apify, if available.'),
 });
 export type FetchAmazonReviewsApifyOutput = z.infer<typeof FetchAmazonReviewsApifyOutputSchema>;
 
@@ -40,10 +40,28 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
     hostname = url.hostname;
     console.log(`[${toolName}] Parsed hostname: ${hostname}`);
 
+    // Check for ASIN in query params
     const asinFromQuery = url.searchParams.get('asin');
     if (asinFromQuery && /^[A-Z0-9]{10}$/i.test(asinFromQuery)) {
       asin = asinFromQuery.toUpperCase();
       console.log(`[${toolName}] Found valid ASIN in query params: ${asin}`);
+    }
+    
+    // Check for ASIN in 'ats' parameter (Buy Again URLs)
+    if (!asin) {
+      const atsParam = url.searchParams.get('ats');
+      if (atsParam) {
+        try {
+          const decodedAts = Buffer.from(atsParam, 'base64').toString();
+          const atsData = JSON.parse(decodedAts);
+          if (atsData.explicitCandidates && /^[A-Z0-9]{10}$/i.test(atsData.explicitCandidates)) {
+            asin = atsData.explicitCandidates.toUpperCase();
+            console.log(`[${toolName}] Found ASIN in ats parameter: ${asin}`);
+          }
+        } catch (e) {
+          console.log(`[${toolName}] Could not parse ats parameter`);
+        }
+      }
     }
 
     // If no ASIN from query, check path
@@ -152,26 +170,30 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
 
     const actorId = 'axesso_data~amazon-reviews-scraper';
     const apifyUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apifyToken}`;
+    const safeApiUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=***`;
 
-    const actorInput = {
-      "asin": asin,
-      "domainCode": domainCode,
-      "maxPages": 1, 
-      "sortBy": "recent",
-      "proxy": {
-        "useApifyProxy": true,
-        "apifyProxyGroups": [
-            "RESIDENTIAL"
-        ]
+    const actorInput = [
+      {
+        "asin": asin,
+        "domainCode": domainCode,
+        "maxPages": 1, 
+        "sortBy": "recent",
+        "proxy": {
+          "useApifyProxy": true,
+          "apifyProxyGroups": [
+              "RESIDENTIAL"
+          ]
+        }
       }
-    };
+    ];
 
     console.log(`[${toolName}] Calling Apify with input: ${JSON.stringify(actorInput, null, 2)}`);
+    console.log(`[${toolName}] Using ASIN: ${asin}, Domain: ${domainCode}`);
 
     const response = await fetch(apifyUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(actorInput),
+      body: JSON.stringify({ input: actorInput }),
     });
 
     console.log(`[${toolName}] Apify response status for ASIN ${asin}: ${response.status}`);
@@ -189,11 +211,13 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
     }
     
     if (datasetItems.length === 0) {
-       console.warn(`[${toolName}] Apify returned an empty array for ASIN ${asin}. No reviews or product title could be found.`);
-       // Even an empty result should have a product title in a separate field, if not, it's a failure.
-       throw new Error(`Apify found no data for ASIN ${asin}. The product may not exist or have any reviews.`);
+       console.warn(`[${toolName}] Apify returned an empty array for ASIN ${asin}. No reviews found, but continuing anyway.`);
     } else {
         console.log(`[${toolName}] Received ${datasetItems.length} items from Apify for ASIN ${asin}.`);
+        // Log first item structure for debugging
+        if (datasetItems.length > 0) {
+            console.log(`[${toolName}] First item keys:`, Object.keys(datasetItems[0]));
+        }
     }
 
     const extractedReviews: string[] = [];
@@ -212,7 +236,6 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
     
     if (!extractedProductTitle) {
       console.warn(`[${toolName}] Apify returned review data but no product title for ASIN ${asin}.`);
-      throw new Error(`Apify returned data but did not include a product title for ASIN ${asin}.`);
     }
     
     console.log(`[${toolName}] Extracted ${extractedReviews.length} reviews. Product Title: '${extractedProductTitle ? extractedProductTitle.substring(0,50)+'...' : 'N/A'}'`);
