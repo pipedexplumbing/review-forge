@@ -29,54 +29,68 @@ export type FetchAmazonReviewsApifyOutput = z.infer<typeof FetchAmazonReviewsApi
 // Helper function to extract ASIN and domain code from Amazon URL
 function extractAsinAndDomain(productURL: string, toolName: string): { asin: string | null; domainCode: string | null } {
   const trimmedProductURL = productURL.trim();
-  console.log(`[${toolName} - extractAsinAndDomain] Processing URL: ${trimmedProductURL}`);
+  console.log(`[${toolName}] Processing URL: ${trimmedProductURL}`);
   let asin: string | null = null;
   let domainCode: string | null = null;
+  let hostname: string | null = null;
 
+  // --- Step 1: Try parsing with the URL constructor (most reliable) ---
   try {
     const url = new URL(trimmedProductURL);
-    const hostname = url.hostname;
-    console.log(`[${toolName} - extractAsinAndDomain] Parsed hostname: ${hostname}`);
+    hostname = url.hostname;
+    console.log(`[${toolName}] Parsed hostname: ${hostname}`);
 
-    // Attempt 1: Extract ASIN from query parameter "asin"
     const asinFromQuery = url.searchParams.get('asin');
-    if (asinFromQuery) {
-      console.log(`[${toolName} - extractAsinAndDomain] Found 'asin' in query params: '${asinFromQuery}'`);
-      if (/^[A-Z0-9]{10}$/i.test(asinFromQuery)) {
-        asin = asinFromQuery.toUpperCase();
-        console.log(`[${toolName} - extractAsinAndDomain] Valid ASIN from query: ${asin}`);
-      } else {
-        console.warn(`[${toolName} - extractAsinAndDomain] Invalid ASIN format from query param '${asinFromQuery}' for URL: ${trimmedProductURL}`);
-      }
-    } else {
-      console.log(`[${toolName} - extractAsinAndDomain] No 'asin' found in query params.`);
+    if (asinFromQuery && /^[A-Z0-9]{10}$/i.test(asinFromQuery)) {
+      asin = asinFromQuery.toUpperCase();
+      console.log(`[${toolName}] Found valid ASIN in query params: ${asin}`);
     }
 
-    // Attempt 2: Extract ASIN from common path patterns if not found in query
+    // If no ASIN from query, check path
     if (!asin) {
-      console.log(`[${toolName} - extractAsinAndDomain] ASIN not found in query, trying path patterns.`);
       const pathPatterns = [
-        /\/(?:dp|gp\/product|-|d)\/([A-Z0-9]{10})/i, 
-        /\/gp\/aw\/d\/([A-Z0-9]{10})/i 
+        /\/(?:dp|gp\/product|-|d)\/([A-Z0-9]{10})/i,
+        /\/gp\/aw\/d\/([A-Z0-9]{10})/i
       ];
       for (const pattern of pathPatterns) {
         const match = url.pathname.match(pattern);
         if (match && match[1]) {
           const potentialAsin = match[1].toUpperCase();
-          if (/^[A-Z0-9]{10}$/.test(potentialAsin)) { // Extra validation
+          if (/^[A-Z0-9]{10}$/.test(potentialAsin)) {
             asin = potentialAsin;
-            console.log(`[${toolName} - extractAsinAndDomain] ASIN from path pattern '${pattern.source}': ${asin}`);
+            console.log(`[${toolName}] Found ASIN in path: ${asin}`);
             break;
-          } else {
-            console.warn(`[${toolName} - extractAsinAndDomain] Invalid ASIN format from path pattern '${pattern.source}': ${potentialAsin} for URL: ${trimmedProductURL}`);
           }
         }
       }
     }
+  } catch (error) {
+    console.warn(`[${toolName}] Could not parse URL with new URL(). Will try regex fallbacks. Error:`, error);
+    // Extract hostname with a simple regex if URL constructor fails
+    const hostnameMatch = trimmedProductURL.match(/^(?:https?:\/\/)?(?:www\.)?([^\/]+)/i);
+    if (hostnameMatch && hostnameMatch[1]) {
+        hostname = hostnameMatch[1];
+        console.log(`[${toolName}] Extracted hostname with regex: ${hostname}`);
+    }
+  }
 
-    // Domain extraction
+  // --- Step 2: Last-resort regex fallback for ASIN on the raw string ---
+  if (!asin) {
+    console.log(`[${toolName}] ASIN not found yet, trying raw string regex fallback.`);
+    const asinMatch = trimmedProductURL.match(/(?:asin=|dp\/|d\/)([A-Z0-9]{10})/i);
+    if (asinMatch && asinMatch[1]) {
+        const potentialAsin = asinMatch[1].toUpperCase();
+        if (/^[A-Z0-9]{10}$/.test(potentialAsin)) {
+            asin = potentialAsin;
+            console.log(`[${toolName}] Found ASIN with raw string regex: ${asin}`);
+        }
+    }
+  }
+  
+  // --- Step 3: Domain Extraction (requires hostname) ---
+  if (hostname) {
     const knownTLDs = ['com', 'co.uk', 'de', 'fr', 'es', 'it', 'co.jp', 'cn', 'in', 'com.br', 'com.mx', 'com.au', 'ca'];
-    let matchedTld: string | undefined = undefined;
+    let matchedTld: string | undefined;
 
     for (const tld of knownTLDs) {
       if (hostname.endsWith(`amazon.${tld}`)) {
@@ -96,28 +110,23 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
         }
       }
     }
-    
-    if (domainCode) {
-        console.log(`[${toolName} - extractAsinAndDomain] Initial domainCode: ${domainCode}`);
-        if (domainCode === "uk") domainCode = "co.uk";
-        if (domainCode === "jp") domainCode = "co.jp";
-        console.log(`[${toolName} - extractAsinAndDomain] Normalized domainCode: ${domainCode}`);
-    }
 
-    if (!asin) {
-      console.warn(`[${toolName} - extractAsinAndDomain] FINAL: Could not extract ASIN. URL: ${trimmedProductURL}`);
+    if (domainCode) {
+        if (domainCode === "uk") domainCode = "co.uk"; // Normalize
+        if (domainCode === "jp") domainCode = "co.jp"; // Normalize
+        console.log(`[${toolName}] Extracted domainCode: ${domainCode}`);
     }
-    if (!domainCode) {
-      console.warn(`[${toolName} - extractAsinAndDomain] FINAL: Could not extract domainCode. Hostname: ${hostname}, URL: ${trimmedProductURL}`);
-    }
-    
-    console.log(`[${toolName} - extractAsinAndDomain] Returning: asin='${asin}', domainCode='${domainCode}'`);
-    return { asin, domainCode };
-  } catch (error) {
-    console.error(`[${toolName} - extractAsinAndDomain] Error processing URL '${trimmedProductURL}':`, error);
-    console.log(`[${toolName} - extractAsinAndDomain] Returning due to error: asin='null', domainCode='null'`);
-    return { asin: null, domainCode: null };
   }
+
+  if (!asin) {
+    console.error(`[${toolName}] FINAL: Could not extract ASIN from URL: ${trimmedProductURL}`);
+  }
+  if (!domainCode) {
+    console.error(`[${toolName}] FINAL: Could not extract domainCode from URL: ${trimmedProductURL}`);
+  }
+
+  console.log(`[${toolName}] Returning: asin='${asin}', domainCode='${domainCode}'`);
+  return { asin, domainCode };
 }
 
 
@@ -217,4 +226,3 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
     }
   }
 );
-
