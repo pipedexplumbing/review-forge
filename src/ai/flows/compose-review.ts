@@ -123,6 +123,7 @@ const composeReviewFlow = ai.defineFlow(
     outputSchema: ComposeReviewOutputSchema,
   },
   async (input: ComposeReviewInput) => {
+    console.log('[composeReviewFlow] Starting flow with input:', input);
     let fetchedProductInfo: FetchAmazonProductInfoOutput = {
         productName: "Product (Details Fetching Failed)",
         productDescription: "No description available.",
@@ -134,15 +135,22 @@ const composeReviewFlow = ai.defineFlow(
     };
 
     try {
+      console.log('[composeReviewFlow] Attempting to fetch product info...');
       fetchedProductInfo = await fetchAmazonProductInfoTool({ productURL: input.amazonLink });
+      console.log('[composeReviewFlow] Product info fetched:', fetchedProductInfo);
     } catch (toolError) {
-      console.warn('Failed to fetch product info with Apify product details tool:', toolError);
+      console.warn('[composeReviewFlow] Failed to fetch product info with Apify product details tool:', toolError);
     }
 
     try {
+        console.log('[composeReviewFlow] Attempting to fetch reviews...');
         fetchedApifyReviewsData = await fetchAmazonReviewsApifyTool({ productURL: input.amazonLink });
+        console.log('[composeReviewFlow] Reviews data fetched:', {
+          reviewCount: fetchedApifyReviewsData.reviews.length, 
+          productTitle: fetchedApifyReviewsData.productTitle
+        });
     } catch (toolError) {
-        console.warn('Failed to fetch customer reviews/title with Apify reviews tool:', toolError);
+        console.warn('[composeReviewFlow] Failed to fetch customer reviews/title with Apify reviews tool:', toolError);
     }
     
     const customerReviewsText = fetchedApifyReviewsData.reviews.length > 0 
@@ -167,13 +175,16 @@ const composeReviewFlow = ai.defineFlow(
       feedbackText: input.feedbackText,
       customerReviewsText: customerReviewsText,
     };
-
+    
+    console.log('[composeReviewFlow] Calling composeReviewPrompt with:', promptInput);
     const {output: promptOutput} = await composeReviewPrompt(promptInput);
     
     if (!promptOutput || !promptOutput.reviewText || !promptOutput.reviewTitle) {
+        console.error('[composeReviewFlow] Prompt output is invalid:', promptOutput);
         throw new Error("Failed to generate review text and title from prompt. Output might be missing expected fields.");
     }
 
+    console.log('[composeReviewFlow] Successfully generated review. Returning output.');
     return {
       reviewTitle: promptOutput.reviewTitle,
       reviewText: promptOutput.reviewText,
