@@ -121,34 +121,30 @@ const composeReviewFlow = ai.defineFlow(
     let fetchedProductInfo: FetchAmazonProductInfoOutput | null = null;
     let fetchedApifyReviewsData: FetchAmazonReviewsApifyOutput | null = null;
 
-    // We will attempt to fetch from both sources. If one fails, we can still proceed if the other succeeds.
     try {
-      fetchedApifyReviewsData = await fetchAmazonReviewsApifyTool({ productURL: input.amazonLink });
-      console.log('[composeReviewFlow] Reviews data fetched successfully.');
-    } catch (error) {
-      console.warn('[composeReviewFlow] Failed to fetch customer reviews/title with Apify reviews tool:', error);
-    }
+      // First, try to get product info and reviews in parallel.
+      // If either tool fails, the entire flow will stop and report the error.
+      [fetchedProductInfo, fetchedApifyReviewsData] = await Promise.all([
+        fetchAmazonProductInfoTool({ productURL: input.amazonLink }),
+        fetchAmazonReviewsApifyTool({ productURL: input.amazonLink })
+      ]);
+      console.log('[composeReviewFlow] Both product info and reviews data fetched successfully.');
     
-    try {
-      fetchedProductInfo = await fetchAmazonProductInfoTool({ productURL: input.amazonLink });
-      console.log('[composeReviewFlow] Product info fetched successfully.');
-    } catch (error) {
-      console.warn('[composeReviewFlow] Failed to fetch product info with Apify product details tool:', error);
+    } catch (error: any) {
+        console.error('[composeReviewFlow] CRITICAL: A data-fetching tool failed. Aborting flow.', error);
+        // Re-throw a user-friendly error to be displayed in the UI.
+        const errorMessage = error.message || "An unknown error occurred during data fetching.";
+        throw new Error(`Could not fetch product details from the provided Amazon link. Reason: ${errorMessage}. Please ensure the link is a valid, public product page and try again.`);
     }
 
-    // Determine the final product name, preferring the reviews tool's title, then the details tool's title.
-    const finalProductName = fetchedApifyReviewsData?.productTitle || fetchedProductInfo?.productName;
-    const finalProductDescription = fetchedProductInfo?.productDescription;
-    const finalProductImageURL = fetchedProductInfo?.productImageURL;
-    
-    // If BOTH tools failed to return a product name, then we cannot proceed.
-    if (!finalProductName) {
-        console.error('[composeReviewFlow] CRITICAL: Both Apify tools failed to retrieve a product name. Aborting.');
-        throw new Error('Could not fetch product details from the provided Amazon link. Please ensure the link is a valid, public product page and try again.');
-    }
+    // Since the tools will now throw an error if they fail, we can be confident we have the data here.
+    // We prioritize the product name from the more detailed product info tool.
+    const finalProductName = fetchedProductInfo.productName || fetchedApifyReviewsData.productTitle;
+    const finalProductDescription = fetchedProductInfo.productDescription;
+    const finalProductImageURL = fetchedProductInfo.productImageURL;
 
-    const customerReviewsText = (fetchedApifyReviewsData?.reviews?.length ?? 0) > 0 
-        ? (fetchedApifyReviewsData?.reviews ?? []).slice(0, 10).map(review => `- ${review.substring(0, 300)}${review.length > 300 ? '...' : ''}`).join('\\n')
+    const customerReviewsText = fetchedApifyReviewsData.reviews.length > 0 
+        ? fetchedApifyReviewsData.reviews.slice(0, 10).map(review => `- ${review.substring(0, 300)}${review.length > 300 ? '...' : ''}`).join('\\n')
         : undefined;
 
     const promptInput: z.infer<typeof ComposeReviewPromptInputSchema> = {

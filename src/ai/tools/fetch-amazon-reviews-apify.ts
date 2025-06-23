@@ -22,12 +22,12 @@ export type FetchAmazonReviewsApifyInput = z.infer<typeof FetchAmazonReviewsApif
 
 const FetchAmazonReviewsApifyOutputSchema = z.object({
   reviews: z.array(z.string()).describe('An array of extracted review text snippets.'),
-  productTitle: z.string().optional().describe('The product title extracted by Apify, if available.'),
+  productTitle: z.string().describe('The product title extracted by Apify.'),
 });
 export type FetchAmazonReviewsApifyOutput = z.infer<typeof FetchAmazonReviewsApifyOutputSchema>;
 
 // Helper function to extract ASIN and domain code from Amazon URL
-function extractAsinAndDomain(productURL: string, toolName: string): { asin: string | null; domainCode: string | null } {
+function extractAsinAndDomain(productURL: string, toolName: string): { asin: string; domainCode: string } {
   const trimmedProductURL = productURL.trim();
   console.log(`[${toolName}] Processing URL: ${trimmedProductURL}`);
   let asin: string | null = null;
@@ -66,7 +66,6 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
     }
   } catch (error) {
     console.warn(`[${toolName}] Could not parse URL with new URL(). Will try regex fallbacks. Error:`, error);
-    // Extract hostname with a simple regex if URL constructor fails
     const hostnameMatch = trimmedProductURL.match(/^(?:https?:\/\/)?(?:www\.)?([^\/]+)/i);
     if (hostnameMatch && hostnameMatch[1]) {
         hostname = hostnameMatch[1];
@@ -112,20 +111,21 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
     }
 
     if (domainCode) {
-        if (domainCode === "uk") domainCode = "co.uk"; // Normalize
-        if (domainCode === "jp") domainCode = "co.jp"; // Normalize
+        if (domainCode === "uk") domainCode = "co.uk";
+        if (domainCode === "jp") domainCode = "co.jp";
         console.log(`[${toolName}] Extracted domainCode: ${domainCode}`);
     }
   }
 
   if (!asin) {
     console.error(`[${toolName}] FINAL: Could not extract ASIN from URL: ${trimmedProductURL}`);
+    throw new Error(`Could not extract a valid ASIN from the URL.`);
   }
   if (!domainCode) {
     console.error(`[${toolName}] FINAL: Could not extract domainCode from URL: ${trimmedProductURL}`);
+    throw new Error(`Could not extract a valid Amazon domain (e.g., 'com', 'co.uk') from the URL.`);
   }
 
-  console.log(`[${toolName}] Returning: asin='${asin}', domainCode='${domainCode}'`);
   return { asin, domainCode };
 }
 
@@ -149,11 +149,6 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
     }
 
     const { asin, domainCode } = extractAsinAndDomain(productURL, toolName);
-
-    if (!asin || !domainCode) {
-      console.error(`[${toolName}] Could not extract valid ASIN ('${asin}') or domain code ('${domainCode}') from URL: ${productURL}.`);
-      throw new Error(`Could not extract valid ASIN or domain from URL: ${productURL}.`);
-    }
 
     const actorId = 'axesso_data~amazon-reviews-scraper';
     const apifyUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apifyToken}`;
@@ -191,7 +186,9 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
     }
     
     if (datasetItems.length === 0) {
-       console.log(`[${toolName}] Apify returned an empty array for ASIN ${asin}. This may be because no reviews were found.`);
+       console.warn(`[${toolName}] Apify returned an empty array for ASIN ${asin}. No reviews or product title could be found.`);
+       // Even an empty result should have a product title in a separate field, if not, it's a failure.
+       throw new Error(`Apify found no data for ASIN ${asin}. The product may not exist or have any reviews.`);
     } else {
         console.log(`[${toolName}] Received ${datasetItems.length} items from Apify for ASIN ${asin}.`);
     }
@@ -210,9 +207,9 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
       }
     }
     
-    if (datasetItems.length > 0 && !extractedProductTitle) {
+    if (!extractedProductTitle) {
       console.warn(`[${toolName}] Apify returned review data but no product title for ASIN ${asin}.`);
-      // This is not a fatal error, we can proceed without the title from this source.
+      throw new Error(`Apify returned data but did not include a product title for ASIN ${asin}.`);
     }
     
     console.log(`[${toolName}] Extracted ${extractedReviews.length} reviews. Product Title: '${extractedProductTitle ? extractedProductTitle.substring(0,50)+'...' : 'N/A'}'`);

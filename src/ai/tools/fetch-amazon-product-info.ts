@@ -30,7 +30,7 @@ const FetchAmazonProductInfoOutputSchema = z.object({
 export type FetchAmazonProductInfoOutput = z.infer<typeof FetchAmazonProductInfoOutputSchema>;
 
 // Helper function to extract ASIN and domain code from Amazon URL
-function extractAsinAndDomain(productURL: string, toolName: string): { asin: string | null; domainCode: string | null } {
+function extractAsinAndDomain(productURL: string, toolName: string): { asin: string; domainCode: string } {
   const trimmedProductURL = productURL.trim();
   console.log(`[${toolName}] Processing URL: ${trimmedProductURL}`);
   let asin: string | null = null;
@@ -69,7 +69,6 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
     }
   } catch (error) {
     console.warn(`[${toolName}] Could not parse URL with new URL(). Will try regex fallbacks. Error:`, error);
-    // Extract hostname with a simple regex if URL constructor fails
     const hostnameMatch = trimmedProductURL.match(/^(?:https?:\/\/)?(?:www\.)?([^\/]+)/i);
     if (hostnameMatch && hostnameMatch[1]) {
         hostname = hostnameMatch[1];
@@ -115,20 +114,21 @@ function extractAsinAndDomain(productURL: string, toolName: string): { asin: str
     }
 
     if (domainCode) {
-        if (domainCode === "uk") domainCode = "co.uk"; // Normalize
-        if (domainCode === "jp") domainCode = "co.jp"; // Normalize
+        if (domainCode === "uk") domainCode = "co.uk";
+        if (domainCode === "jp") domainCode = "co.jp";
         console.log(`[${toolName}] Extracted domainCode: ${domainCode}`);
     }
   }
 
   if (!asin) {
     console.error(`[${toolName}] FINAL: Could not extract ASIN from URL: ${trimmedProductURL}`);
+    throw new Error(`Could not extract a valid ASIN from the URL.`);
   }
   if (!domainCode) {
     console.error(`[${toolName}] FINAL: Could not extract domainCode from URL: ${trimmedProductURL}`);
+    throw new Error(`Could not extract a valid Amazon domain (e.g., 'com', 'co.uk') from the URL.`);
   }
 
-  console.log(`[${toolName}] Returning: asin='${asin}', domainCode='${domainCode}'`);
   return { asin, domainCode };
 }
 
@@ -152,11 +152,6 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
     }
 
     const { asin, domainCode } = extractAsinAndDomain(productURL, toolName);
-
-    if (!asin || !domainCode) {
-      console.error(`[${toolName}] Could not extract valid ASIN ('${asin}') or domainCode ('${domainCode}') from URL: ${productURL}.`);
-      throw new Error(`Could not extract valid ASIN or domain from URL: ${productURL}`);
-    }
 
     const actorId = 'axesso_data~amazon-product-details-scraper';
     const apifyApiUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apifyToken}`;
@@ -188,7 +183,7 @@ export const fetchAmazonProductInfoTool = ai.defineTool(
     
     if (!Array.isArray(datasetItems) || datasetItems.length === 0 || typeof datasetItems[0] !== 'object' || datasetItems[0] === null) {
       console.error(`[${toolName}] Apify returned no valid data for ASIN ${asin}.`);
-      throw new Error(`Apify returned no valid data for product ASIN ${asin}.`);
+      throw new Error(`Apify returned no valid data for product ASIN ${asin}. The product may not exist or is unavailable.`);
     }
 
     const productData = datasetItems[0] as any;
