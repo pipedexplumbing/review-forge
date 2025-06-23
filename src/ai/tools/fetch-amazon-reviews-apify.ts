@@ -153,17 +153,15 @@ export const fetchAmazonReviewsApifyTool = ai.defineTool(
     const actorId = 'axesso_data~amazon-reviews-scraper';
     const apifyUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${apifyToken}`;
 
-    const actorInput = {
-      input: [ 
-        {
-          asin: asin,
-          domainCode: domainCode,
-          maxPages: 1, 
-          sortBy: "recent", 
-        },
-      ],
-    };
-    console.log(`[${toolName}] Calling Apify with ASIN: ${asin}, Domain: ${domainCode}`);
+    const actorInput = [
+      {
+        asin: asin,
+        domainCode: domainCode,
+        maxPages: 1, 
+        sortBy: "recent", 
+      },
+    ];
+    console.log(`[${toolName}] Calling Apify with input: ${JSON.stringify(actorInput)}`);
 
     const response = await fetch(apifyUrl, {
       method: 'POST',
