@@ -34,6 +34,29 @@ const reviewFormSchema = z.object({
 
 type ReviewFormData = z.infer<typeof reviewFormSchema>;
 
+// Helper function to play notification sound
+const playNotificationSound = () => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.3);
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.3);
+  } catch (error) {
+    console.log('Notification sound failed:', error);
+  }
+};
+
 export default function ReviewForgePage() {
   // --- Authentication State ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -59,6 +82,13 @@ export default function ReviewForgePage() {
 
   useEffect(() => {
     setCurrentYear(new Date().getFullYear());
+    
+    // Check URL params for testing
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('sound') === 'play') {
+      console.log('Testing sound from URL parameter');
+      playNotificationSound();
+    }
   }, []);
 
   // --- Authentication Effects and Handlers ---
@@ -155,6 +185,9 @@ export default function ReviewForgePage() {
         title: "Review Forged!",
         description: "Your AI-crafted review title and body are ready.",
       });
+      
+      // Play notification sound
+      playNotificationSound();
     } catch (e) {
       console.error("Error composing review:", e);
       const errorMessage = e instanceof Error ? e.message : "An unknown error occurred.";
@@ -325,8 +358,17 @@ export default function ReviewForgePage() {
   // --- Authenticated App View ---
   return (
     <div className="min-h-screen bg-background flex flex-col items-center py-10 px-4 transition-colors duration-300">
-      <div className="w-full max-w-3xl flex justify-end items-center mb-10">
-        <Button onClick={handleLogout} variant="outline" size="md" className="font-headline font-semibold text-lg py-3 px-6">
+      <div className="w-full max-w-3xl flex justify-between items-center mb-10">
+        <Button 
+          onClick={playNotificationSound} 
+          variant="ghost" 
+          size="sm" 
+          className="font-headline font-semibold text-lg py-3 px-6"
+          title="Test notification sound"
+        >
+          🔔 Test Sound
+        </Button>
+        <Button onClick={handleLogout} variant="outline" size="sm" className="font-headline font-semibold text-lg py-3 px-6">
           <LogOut className="mr-2.5 h-5 w-5" />
           Logout
         </Button>
