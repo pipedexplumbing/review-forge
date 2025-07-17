@@ -47,7 +47,7 @@ PASSWORD=your_app_password_here
 npm run dev
 ```
 
-6. Open [http://localhost:3000](http://localhost:3000) in your browser
+6. Open [http://localhost:8080](http://localhost:8080) in your browser
 
 ## Getting API Keys
 
