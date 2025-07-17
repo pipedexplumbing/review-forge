@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 8080 --hostname 0.0.0.0",
+    "dev": "HOSTNAME=localhost PORT=3293 NODE_ENV=development npx next dev --hostname localhost --port 3293",
+    "dev:simple": "next dev",
+    "dev:debug": "NODE_OPTIONS='--inspect' next dev",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build",

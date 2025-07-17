@@ -4,9 +4,5 @@
       "src": "package.json",
       "use": "@vercel/next"
     }
-  ],
-  "env": {
-    "GEMINI_API_KEY": "@gemini-api-key",
-    "APIFY_API_TOKEN": "@apify-api-token"
-  }
+  ]
 }

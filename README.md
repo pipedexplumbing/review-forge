@@ -11,7 +11,7 @@ AI-powered Amazon product review generator built with Next.js and Google Genkit.
 
 ## Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+ (tested with Node.js 20 and 23)
 - npm or yarn
 - API Keys:
   - Google AI API key (for Genkit)
@@ -47,7 +47,44 @@ PASSWORD=your_app_password_here
 npm run dev
 ```
 
-6. Open [http://localhost:8080](http://localhost:8080) in your browser
+This will start the Next.js development server on port 3293 with explicit configuration for reliable local development.
+
+6. Open [http://localhost:3293](http://localhost:3293) in your browser
+
+### Alternative Development Commands
+
+If you experience issues with the main dev command, try:
+
+```bash
+npm run dev:simple    # Standard Next.js dev server (port 3000)
+npm run dev:debug     # With Node.js debugger enabled (port 3000)
+```
+
+## Server Configuration
+
+The development server is configured with explicit settings to ensure reliable startup:
+
+- **Port**: 3293 (configurable via `PORT` environment variable)
+- **Hostname**: localhost (explicit binding for compatibility)
+- **Environment**: development mode with full debugging
+
+### Troubleshooting
+
+If you encounter connection issues:
+
+1. **Check port availability**: Ensure port 3293 is not in use by another application
+2. **Try alternative ports**: Use `npm run dev:simple` for standard port 3000
+3. **Node.js version**: Ensure you're using Node.js 18+
+4. **Clear cache**: Run `rm -rf .next && npm run dev` to clear Next.js cache
+
+### Production Deployment
+
+The application is deployed on Vercel with the following configuration:
+
+- **Environment Variables**: Set `GEMINI_API_KEY` and `APIFY_API_TOKEN` in Vercel dashboard
+- **Build Command**: `npm run build`
+- **Start Command**: `npm run start`
+- **Node.js Version**: 20.x (specified in `package.json`)
 
 ## Getting API Keys
 

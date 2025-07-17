@@ -17,7 +17,7 @@ import { Switch } from '@/components/ui/switch';
 import StarRatingInput from '@/components/ui/star-rating-input';
 import { useToast } from '@/hooks/use-toast';
 import { composeReview, type ComposeReviewInput, type ComposeReviewOutput } from '@/ai/flows/compose-review';
-import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, PencilRuler, LogOut, KeyRound, Highlighter, RotateCcw, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Sparkles, Copy, Check, Loader2, Link as LinkIcon, PencilRuler, LogOut, KeyRound, Highlighter, RotateCcw, RefreshCw } from 'lucide-react';
 
 // --- Authentication Constants ---
 const HARDCODED_PASSWORD = "amazon";
@@ -78,7 +78,6 @@ export default function ReviewForgePage() {
   const [isRefining, setIsRefining] = useState(false);
   const { toast, dismiss: dismissToast } = useToast();
   const [currentYear, setCurrentYear] = useState<number | null>(null);
-  const [showModelUpdateWarning, setShowModelUpdateWarning] = useState(true);
   // --- End App Specific State ---
 
   useEffect(() => {
@@ -375,34 +374,6 @@ export default function ReviewForgePage() {
         </Button>
       </div>
       
-      {showModelUpdateWarning && (
-        <div className="w-full max-w-3xl mb-8">
-          <Card className="bg-amber-50 border-amber-200 shadow-lg rounded-lg">
-            <CardHeader className="p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <AlertTriangle className="h-6 w-6 text-amber-600 mr-3" />
-                  <CardTitle className="font-headline text-xl text-amber-800">Model Update Available</CardTitle>
-                </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setShowModelUpdateWarning(false)}
-                  className="text-amber-700 hover:text-amber-900"
-                >
-                  ×
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="p-6 pt-0">
-              <p className="font-body text-amber-700">
-                This app is currently using <strong>Gemini 2.5 Flash</strong>. 
-                Newer models like <strong>Gemini 3.0</strong> may be available for improved performance and accuracy.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
       
       <header className="mb-10 text-center">
         <div className="mb-6 flex justify-center">
