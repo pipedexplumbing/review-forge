@@ -92,28 +92,36 @@ To help you, I've also looked at what other customers are saying. Here are some 
 
 Based on all this information (the product itself, my feedback, and what other customers said), please generate the review TITLE and TEXT.
 
-Regarding review TEXT length and style:
-- It should sound like a real person sharing their genuine experience with the product. Write *entirely* in the first person, using 'I', 'me', 'my'. Describe *my* supposed direct experience with the product.
-- The length should be appropriate to the input I've given:
-  - If I have provided detailed feedback in "{{{feedbackText}}}", then a more comprehensive review (e.g., 2-4 well-developed paragraphs) is appropriate to cover my points.
-  - If my feedback is brief or absent, aim for a more concise review (e.g., 1-2 well-developed paragraphs, or even a few insightful sentences).
-  - Prioritize quality and authenticity over sheer length.
-- If it feels natural for the product and my feedback, consider including a 'Pros:' and 'Cons:' section. Use simple bullet points for easy copying (e.g., "- Pro: ...", "- Con: ...", or "* Pro: ...", "* Con: ..."). This section should be part of the overall review text.
-- You can include one or two relevant emojis (e.g., 👍, 🤔, 🎉) if they fit the tone of the review, but don't overdo it. Place them naturally within the text.
-- If I gave a high star rating (4-5 stars) or positive feedback, focus on what I liked and why. Be specific.
-- If I gave a low star rating (1-2 stars) or negative feedback, clearly explain the issues I encountered and my disappointment.
-- If my rating is mid-range (3 stars), or if I only provided feedback without a rating, provide a balanced perspective, highlighting both pros and cons if appropriate.
-- If I only gave a star rating and no text feedback, infer my general sentiment from that rating and elaborate on potential reasons based on the product description and other reviews, keeping the length appropriate and concise (1-2 paragraphs typically).
-- If I provided no feedback or rating at all, write a concise, engaging, and generally positive review (e.g., 1-2 paragraphs) based on the product description and other customer reviews (if available). If no other information is available, use your knowledge to create a plausible, general review for "{{{productName}}}".
+Regarding review TEXT style:
+- Write INFORMALLY, like you're texting a friend about the product
+- Use SHORT, PUNCHY sentences - often just one line each
+- PREFER line-by-line format over paragraphs
+- Start casual and conversational (e.g., "Got this to replace my old one", "Picked this up on sale", "Finally upgraded to this")
+- Include natural reactions (e.g., "Boy, does it work well", "I'm actually quite surprised", "Not what I expected")
+- Add rhetorical questions when fitting (e.g., "Would I recommend it to a friend? 10/10 times")
+- Keep it REAL - like an actual person would write, not a professional reviewer
+
+Length and format:
+- If user provided detailed feedback: Expand on their points but keep the informal, line-by-line style
+- If minimal/no feedback: Keep it super brief - 3-5 lines total
+- Instead of formal pros/cons lists, weave benefits/issues naturally into the text
+- Or use simple one-line format like: "High quality, affordable price, time-efficient, and quiet."
+- End simply with star rating or final verdict
+
+Tone variations by rating:
+- High ratings (4-5 stars): Enthusiastic but genuine ("Love it", "Worth every penny", "Game changer")
+- Low ratings (1-2 stars): Disappointed but factual ("Not worth it", "Waste of money", "Back to the drawing board")
+- Mid ratings (3 stars): Mixed feelings ("It's okay", "Does the job", "Nothing special")
 
 Please ensure the review TEXT:
-- Is well-formatted for readability on Amazon (e.g., distinct paragraphs, bullet points for pros/cons if used).
-- Does not include any placeholders like "[Your Name]" or instructions for me to fill in.
+- Sounds like a real person, not a bot
+- Uses natural line breaks for readability
+- Feels spontaneous and genuine
 
 Your entire response MUST be a single JSON object with two keys: "reviewTitle" and "reviewText". For example:
 {
-  "reviewTitle": "Excellent Product, Highly Recommend!",
-  "reviewText": "I've been using this product for a week now and I'm very impressed... [additional paragraphs]...\\n\\nPros:\\n- Great battery life\\n- Easy to use\\n\\nCons:\\n- A bit bulky"
+  "reviewTitle": "Exceeded expectations!",
+  "reviewText": "Got this to replace my last one. Boy, does it work well. I'm actually quite surprised given the price and being off-brand.\\n\\nWould I recommend it to a friend? 10/10 times.\\n\\nHigh quality, affordable price, time-efficient, and quiet.\\n\\n5 stars."
 }
 Do not include any other text, explanations, or markdown formatting like \`\`\`json before or after this JSON object.
 `,
